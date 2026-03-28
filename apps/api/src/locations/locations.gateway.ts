@@ -1,0 +1,47 @@
+import { Injectable, OnModuleDestroy } from "@nestjs/common";
+import type { LastKnownLocation } from "@ignara/sharedtypes";
+import { Server } from "socket.io";
+import { Socket } from "socket.io";
+
+@Injectable()
+export class LocationsGateway implements OnModuleDestroy {
+  private server?: Server;
+
+  initialize(httpServer: unknown) {
+    if (this.server) {
+      return;
+    }
+
+    this.server = new Server(httpServer as any, {
+      cors: {
+        origin: process.env.CORS_ORIGIN ?? "http://localhost:3000",
+        credentials: true,
+      },
+      path: "/locations/socket.io",
+    });
+
+    this.server.of("/locations").on("connection", (socket: Socket) => {
+      socket.on("join", (payload: { room: string }) => {
+        if (!payload?.room) {
+          return;
+        }
+
+        socket.join(payload.room);
+        socket.emit("joined", payload.room);
+      });
+    });
+  }
+
+  onModuleDestroy() {
+    this.server?.close();
+    this.server = undefined;
+  }
+
+  emitOrgLocation(orgId: string, location: LastKnownLocation) {
+    if (!this.server) {
+      return;
+    }
+
+    this.server.of("/locations").to(`org:${orgId}:locations`).emit("location:update", location);
+  }
+}

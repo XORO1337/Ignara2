@@ -1,0 +1,22 @@
+{
+  "name": "ignara",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.12.0",
+  "engines": {
+    "node": ">=20.11.0"
+  },
+  "scripts": {
+    "dev": "turbo dev --parallel",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "infra:up": "docker compose up -d postgres redis mosquitto",
+    "infra:down": "docker compose down",
+    "db:setup": "pnpm --filter @ignara/api migration:run && pnpm --filter @ignara/api seed"
+  },
+  "devDependencies": {
+    "turbo": "^2.1.3",
+    "typescript": "^5.6.3"
+  }
+}
