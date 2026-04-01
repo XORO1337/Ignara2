@@ -27,6 +27,8 @@ export default function NotificationsPage() {
         }),
       });
       setStatus("Targeted message published.");
+    } catch {
+      setStatus("Could not publish targeted message. Verify API connectivity.");
     } finally {
       setIsSendingTargeted(false);
     }
@@ -43,6 +45,8 @@ export default function NotificationsPage() {
         }),
       });
       setStatus("Broadcast message published.");
+    } catch {
+      setStatus("Could not publish broadcast message. Verify API connectivity.");
     } finally {
       setIsSendingBroadcast(false);
     }

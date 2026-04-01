@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST="{}"
+self.__REACT_LOADABLE_MANIFEST="{\"app/dashboard/page.tsx -> ../../components/live-map\":{\"id\":\"app/dashboard/page.tsx -> ../../components/live-map\",\"files\":[\"static/chunks/_app-pages-browser_src_components_live-map_tsx.js\"]}}"

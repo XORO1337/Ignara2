@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import type { LastKnownLocation, RoomZone, TagDeviceSummary } from "@ignara/sharedtypes";
 import { apiRequest } from "../../lib/api";
 import { parseMapEditorData, pickActiveMap, type MapBackgroundConfig, type MapPropElement } from "../../lib/map-config";
@@ -8,9 +9,19 @@ import { locationSocket } from "../../lib/socket";
 import { useAuthStore } from "../../store/auth-store";
 import { useLocationStore } from "../../store/location-store";
 import { AppButton, AppContainer, AppInput, GlassCard, MetricCard, StatusPill } from "../../components/ui";
-import { LiveMap } from "../../components/live-map";
 
-type SessionUser = { sub: string; email: string; role: "admin" | "manager" | "employee"; orgId: string };
+const LiveMap = dynamic(
+  () => import("../../components/live-map").then((module) => module.LiveMap),
+  { ssr: false },
+);
+
+type SessionUser = {
+  sub: string;
+  email: string;
+  role: "admin" | "manager" | "employee";
+  orgId: string;
+  isDevAllowlisted?: boolean;
+};
 type PersistedMap = { id: string; orgId: string; name: string; jsonConfig?: Record<string, unknown> | null };
 
 export default function DashboardPage() {
@@ -20,16 +31,11 @@ export default function DashboardPage() {
   const setLocations = useLocationStore((state) => state.setLocations);
   const upsertLocation = useLocationStore((state) => state.upsertLocation);
 
-  const locations = Object.values(locationsRecord);
-  const connectedLocations = locations.filter((location) => location.connected);
-  const disconnectedLocations = locations.filter((location) => !location.connected);
-  const activeRoomCount = new Set(connectedLocations.map((location) => location.roomId)).size;
-  const unmappedConnectedCount = connectedLocations.filter((location) => !mapRooms.some((room) => room.id === location.roomId)).length;
-
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [socketState, setSocketState] = useState<"disconnected" | "connecting" | "connected">("disconnected");
 
+  const [activeMapId, setActiveMapId] = useState<string | null>(null);
   const [activeMapName, setActiveMapName] = useState<string | null>(null);
   const [mapRooms, setMapRooms] = useState<RoomZone[]>([]);
   const [mapProps, setMapProps] = useState<MapPropElement[]>([]);
@@ -51,6 +57,13 @@ export default function DashboardPage() {
   const [savingDeviceId, setSavingDeviceId] = useState<string | null>(null);
   const [wifiStatus, setWifiStatus] = useState<string | null>(null);
 
+  const locations = Object.values(locationsRecord);
+  const connectedLocations = locations.filter((location) => location.connected);
+  const disconnectedLocations = locations.filter((location) => !location.connected);
+  const activeRoomCount = new Set(connectedLocations.map((location) => location.roomId)).size;
+  const unmappedConnectedCount = connectedLocations.filter((location) => !mapRooms.some((room) => room.id === location.roomId)).length;
+
+  const canManageLiveMap = user?.role === "admin" || user?.role === "manager";
   const canManageWifi = user?.role === "admin" || user?.role === "manager";
 
   const selectedIds = Object.entries(selectedTagIds)
@@ -92,6 +105,7 @@ export default function DashboardPage() {
   function hydrateMapFromList(maps: PersistedMap[]) {
     const activeMap = pickActiveMap(maps);
     if (!activeMap) {
+      setActiveMapId(null);
       setActiveMapName(null);
       setMapRooms([]);
       setMapProps([]);
@@ -100,6 +114,7 @@ export default function DashboardPage() {
     }
 
     const parsedMap = parseMapEditorData(activeMap.jsonConfig ?? {});
+    setActiveMapId(activeMap.id);
     setActiveMapName(activeMap.name);
     setMapRooms(parsedMap.rooms);
     setMapProps(parsedMap.props);
@@ -347,7 +362,14 @@ export default function DashboardPage() {
                 No saved room zones found. Create zones in Map Editor to enable room-based live placement.
               </p>
             ) : null}
-            <LiveMap rooms={mapRooms} locations={connectedLocations} mapProps={mapProps} background={mapBackground} />
+            <LiveMap
+              rooms={mapRooms}
+              locations={connectedLocations}
+              mapProps={mapProps}
+              background={mapBackground}
+              interactive={canManageLiveMap}
+              mapStorageKey={activeMapId && user ? `${user.orgId}:${activeMapId}` : null}
+            />
           </GlassCard>
 
           {disconnectedLocations.length > 0 ? (
@@ -458,12 +480,13 @@ export default function DashboardPage() {
                 </AppButton>
               </div>
 
-              <div className="mt-3 space-y-3">
+              <div className="mt-3 max-h-[32rem] space-y-3 overflow-auto pr-1">
                 {filteredTags.map((tag) => (
                   <div key={tag.id} className="rounded-xl border border-outline/70 bg-panel-strong/50 p-3">
                     <label className="flex items-center gap-2">
                       <input
                         type="checkbox"
+                        className="h-4 w-4 rounded border-outline bg-panel-strong text-accent"
                         checked={selectedTagIds[tag.id] ?? false}
                         onChange={(event) =>
                           setSelectedTagIds((prev) => ({
@@ -525,7 +548,11 @@ export default function DashboardPage() {
 
               {wifiStatus ? <p className="mt-3 text-xs text-text-dim">{wifiStatus}</p> : null}
             </div>
-          ) : null}
+          ) : (
+            <div className="rounded-xl border border-outline/70 bg-panel-strong/45 p-3 text-sm text-text-dim">
+              WiFi assignment controls are available to admin and manager roles.
+            </div>
+          )}
         </GlassCard>
       </section>
     </AppContainer>

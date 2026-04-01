@@ -805,6 +805,9 @@ video {
 .h-3\.5 {
   height: 0.875rem;
 }
+.h-4 {
+  height: 1rem;
+}
 .h-48 {
   height: 12rem;
 }
@@ -820,6 +823,9 @@ video {
 .h-80 {
   height: 20rem;
 }
+.max-h-\[32rem\] {
+  max-height: 32rem;
+}
 .min-h-\[70vh\] {
   min-height: 70vh;
 }
@@ -831,6 +837,9 @@ video {
 }
 .w-3\.5 {
   width: 0.875rem;
+}
+.w-4 {
+  width: 1rem;
 }
 .w-48 {
   width: 12rem;
@@ -858,6 +867,9 @@ video {
 }
 .max-w-xl {
   max-width: 36rem;
+}
+.shrink-0 {
+  flex-shrink: 0;
 }
 .-translate-y-1\/3 {
   --tw-translate-y: -33.333333%;
@@ -891,6 +903,9 @@ video {
 }
 .flex-wrap {
   flex-wrap: wrap;
+}
+.flex-nowrap {
+  flex-wrap: nowrap;
 }
 .items-start {
   align-items: flex-start;
@@ -944,11 +959,23 @@ video {
   margin-top: calc(1.5rem * calc(1 - var(--tw-space-y-reverse)));
   margin-bottom: calc(1.5rem * var(--tw-space-y-reverse));
 }
+.overflow-auto {
+  overflow: auto;
+}
 .overflow-hidden {
   overflow: hidden;
 }
+.overflow-x-auto {
+  overflow-x: auto;
+}
+.whitespace-nowrap {
+  white-space: nowrap;
+}
 .text-balance {
   text-wrap: balance;
+}
+.rounded {
+  border-radius: 0.25rem;
 }
 .rounded-2xl {
   border-radius: 1rem;
@@ -1052,6 +1079,9 @@ video {
   --tw-bg-opacity: 1;
   background-color: rgb(var(--panel-strong) / var(--tw-bg-opacity, 1));
 }
+.bg-panel-strong\/45 {
+  background-color: rgb(var(--panel-strong) / 0.45);
+}
 .bg-panel-strong\/50 {
   background-color: rgb(var(--panel-strong) / 0.5);
 }
@@ -1095,6 +1125,10 @@ video {
 .p-7 {
   padding: 1.75rem;
 }
+.px-2\.5 {
+  padding-left: 0.625rem;
+  padding-right: 0.625rem;
+}
 .px-3 {
   padding-left: 0.75rem;
   padding-right: 0.75rem;
@@ -1130,6 +1164,12 @@ video {
 .py-6 {
   padding-top: 1.5rem;
   padding-bottom: 1.5rem;
+}
+.pb-1 {
+  padding-bottom: 0.25rem;
+}
+.pr-1 {
+  padding-right: 0.25rem;
 }
 .pt-4 {
   padding-top: 1rem;
@@ -1200,6 +1240,10 @@ video {
 }
 .tracking-tight {
   letter-spacing: -0.025em;
+}
+.text-accent {
+  --tw-text-opacity: 1;
+  color: rgb(var(--accent) / var(--tw-text-opacity, 1));
 }
 .text-accent-contrast {
   --tw-text-opacity: 1;
@@ -1329,6 +1373,7 @@ body {
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: clip;
   background:
     radial-gradient(circle at 15% -10%, rgb(var(--accent) / 0.12), transparent 44%),
     radial-gradient(circle at 110% 15%, rgb(var(--success) / 0.09), transparent 34%),
@@ -1359,6 +1404,17 @@ body {
 
 a {
   color: inherit;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: rgb(var(--accent));
+}
+
+select {
+  color: rgb(var(--text));
+  background: rgb(var(--panel-strong));
+  border-color: rgb(var(--outline));
 }
 
 .font-data {
@@ -1473,8 +1529,16 @@ a {
     grid-template-columns: 1fr auto auto;
   }
 
+  .md\:flex-wrap {
+    flex-wrap: wrap;
+  }
+
   .md\:items-end {
     align-items: flex-end;
+  }
+
+  .md\:overflow-visible {
+    overflow: visible;
   }
 
   .md\:p-10 {
@@ -1498,6 +1562,10 @@ a {
   .md\:py-8 {
     padding-top: 2rem;
     padding-bottom: 2rem;
+  }
+
+  .md\:pb-0 {
+    padding-bottom: 0px;
   }
 
   .md\:text-6xl {

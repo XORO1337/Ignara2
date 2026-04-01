@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { LastKnownLocation } from "@ignara/sharedtypes";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { apiRequest } from "../../lib/api";
 import { locationSocket } from "../../lib/socket";
 import { parseMapEditorData, pickActiveMap } from "../../lib/map-config";
@@ -35,14 +35,24 @@ type SessionUser = {
   email: string;
   role: "admin" | "manager" | "employee";
   orgId: string;
-};
+  isDevAllowlisted?: boolean;
+}
 
-function parseDevAllowlist() {
-  const raw = process.env.NEXT_PUBLIC_DEV_USER_EMAILS ?? "";
-  return raw
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Invalid file payload"));
+    };
+
+    reader.onerror = () => reject(reader.error ?? new Error("Could not read file"));
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function MapEditorPage() {
@@ -62,7 +72,6 @@ export default function MapEditorPage() {
 
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
-  const devAllowlist = useMemo(parseDevAllowlist, []);
 
   const [mapId, setMapId] = useState<string | null>(null);
   const [mapName, setMapName] = useState("HQ Floor 1");
@@ -95,8 +104,7 @@ export default function MapEditorPage() {
           throw new Error("Missing session");
         }
 
-        const isDevUser = devAllowlist.includes(sessionUser.email.toLowerCase());
-        const canEditMap = sessionUser.role === "admin" || isDevUser;
+        const canEditMap = sessionUser.role === "admin" || sessionUser.isDevAllowlisted === true;
         if (!canEditMap) {
           if (active) {
             setHasAccess(false);
@@ -167,7 +175,7 @@ export default function MapEditorPage() {
       locationSocket.off("location:update");
       locationSocket.disconnect();
     };
-  }, [devAllowlist, setBackground, setProps, setRooms, setUser, user]);
+  }, [setBackground, setProps, setRooms, setUser, user]);
 
   async function saveMap() {
     try {
@@ -207,17 +215,23 @@ export default function MapEditorPage() {
       return;
     }
 
-    const dataUrl = await file.text().then((text) => `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(text)))}`);
-    setBackground({
-      dataUrl,
-      x: 0,
-      y: 0,
-      w: 1200,
-      h: 720,
-      opacity: 0.9,
-    });
-    selectTarget({ type: "background" });
-    setStatus(`Imported SVG floor-plan background: ${file.name}`);
+    try {
+      const dataUrl = await readFileAsDataUrl(file);
+      setBackground({
+        dataUrl,
+        x: 0,
+        y: 0,
+        w: 1200,
+        h: 720,
+        opacity: 0.9,
+      });
+      selectTarget({ type: "background" });
+      setStatus(`Imported SVG floor-plan background: ${file.name}`);
+    } catch {
+      setStatus("Could not read SVG file. Try another file and re-import.");
+    } finally {
+      event.currentTarget.value = "";
+    }
   }
 
   return (

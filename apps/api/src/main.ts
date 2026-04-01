@@ -1,6 +1,7 @@
 import { NestFactory } from "@nestjs/core";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
+import { validateCorsOrigin } from "./common/cors-origin";
 import { LocationsGateway } from "./locations/locations.gateway";
 
 async function bootstrap() {
@@ -8,7 +9,7 @@ async function bootstrap() {
 
   app.use(cookieParser());
   app.enableCors({
-    origin: process.env.CORS_ORIGIN ?? "http://localhost:3000",
+    origin: (origin, callback) => validateCorsOrigin(origin, callback),
     credentials: true,
   });
 

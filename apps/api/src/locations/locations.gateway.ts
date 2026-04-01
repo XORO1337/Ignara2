@@ -2,6 +2,7 @@ import { Injectable, OnModuleDestroy } from "@nestjs/common";
 import type { LastKnownLocation } from "@ignara/sharedtypes";
 import { Server } from "socket.io";
 import { Socket } from "socket.io";
+import { validateCorsOrigin } from "../common/cors-origin";
 
 @Injectable()
 export class LocationsGateway implements OnModuleDestroy {
@@ -14,7 +15,7 @@ export class LocationsGateway implements OnModuleDestroy {
 
     this.server = new Server(httpServer as any, {
       cors: {
-        origin: process.env.CORS_ORIGIN ?? "http://localhost:3000",
+        origin: (origin, callback) => validateCorsOrigin(origin, callback),
         credentials: true,
       },
       path: "/locations/socket.io",

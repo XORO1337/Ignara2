@@ -1,38 +1,32 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuthStore } from "../store/auth-store";
 import { ThemeToggle } from "./theme-toggle";
 
 const baseLinks = [
-  { href: "/", label: "Landing" },
+  { href: "/", label: "Home" },
   { href: "/dashboard", label: "Dashboard" },
   { href: "/device-config", label: "Device Config" },
   { href: "/notifications", label: "Notifications" },
-  { href: "/login", label: "Login" },
 ];
 
-function parseDevAllowlist() {
-  const raw = process.env.NEXT_PUBLIC_DEV_USER_EMAILS ?? "";
-  return raw
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-}
+const loginLink = { href: "/login", label: "Login" };
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const user = useAuthStore((state) => state.user);
-  const devAllowlist = useMemo(parseDevAllowlist, []);
-  const isDevUser = !!user?.email && devAllowlist.includes(user.email.toLowerCase());
-  const canAccessMapEditor = user?.role === "admin" || isDevUser;
+  const canAccessMapEditor = user?.role === "admin" || user?.isDevAllowlisted === true;
 
-  const links = canAccessMapEditor
-    ? [...baseLinks.slice(0, 3), { href: "/map-editor", label: "Map Editor" }, ...baseLinks.slice(3)]
-    : baseLinks;
+  const links = [...baseLinks];
+  if (canAccessMapEditor) {
+    links.splice(3, 0, { href: "/map-editor", label: "Map Editor" });
+  }
+  if (!user) {
+    links.push(loginLink);
+  }
 
   return (
     <div className="min-h-screen bg-app text-text">
@@ -47,14 +41,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/" className="text-lg font-semibold tracking-tight text-text">
             IGNARA Control Grid
           </Link>
-          <nav className="order-3 flex w-full flex-wrap items-center gap-1 text-sm md:order-none md:w-auto">
+          <nav className="order-3 flex w-full flex-nowrap items-center gap-1 overflow-x-auto pb-1 text-sm md:order-none md:w-auto md:flex-wrap md:overflow-visible md:pb-0">
             {links.map((link) => {
-              const active = pathname === link.href;
+              const active =
+                link.href === "/"
+                  ? pathname === "/"
+                  : pathname === link.href || pathname.startsWith(`${link.href}/`);
+
               return (
                 <Link
                   key={link.href}
                   href={link.href}
-                  className={`rounded-lg border px-3 py-1.5 font-medium transition duration-200 ${
+                  className={`whitespace-nowrap rounded-lg border px-3 py-1.5 font-medium transition duration-200 ${
                     active
                       ? "border-outline bg-panel text-text shadow-sm"
                       : "border-transparent text-text-dim hover:border-outline/60 hover:bg-panel/75 hover:text-text"
@@ -65,7 +63,9 @@ export function AppShell({ children }: { children: ReactNode }) {
               );
             })}
           </nav>
-          <ThemeToggle />
+          <div className="shrink-0">
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 

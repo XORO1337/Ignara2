@@ -9,7 +9,7 @@ import { DevicesService } from "./devices.service";
 type SessionUser = {
   orgId: string;
   role?: string;
-  email?: string;
+  isDevAllowlisted?: boolean;
 };
 
 @Controller("devices")
@@ -18,19 +18,9 @@ type SessionUser = {
 export class DevicesController {
   constructor(private readonly devicesService: DevicesService) {}
 
-  private isDevUser(email?: string) {
-    const configured = (process.env.DEV_USER_EMAILS ?? "")
-      .split(",")
-      .map((entry) => entry.trim().toLowerCase())
-      .filter(Boolean);
-
-    return !!email && configured.includes(email.toLowerCase());
-  }
-
   private assertAdminOrDev(request: Request & { user?: SessionUser }) {
     const role = request.user?.role;
-    const email = request.user?.email;
-    if (role === "admin" || this.isDevUser(email)) {
+    if (role === "admin" || request.user?.isDevAllowlisted) {
       return;
     }
 

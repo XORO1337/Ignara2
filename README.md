@@ -52,6 +52,15 @@ pnpm --filter @ignara/web dev   # Web on :3000
 - Web: `http://localhost:3000`
 - API: `http://localhost:3001`
 
+### API URL and CORS Defaults
+
+- The web app auto-detects the API URL for local dev and GitHub Codespaces.
+- `NEXT_PUBLIC_API_URL` is optional and only needed when overriding the default behavior.
+- API CORS allows localhost and GitHub Codespaces web origins by default.
+- `CORS_ORIGIN` is optional and can be set to a comma-separated list of additional origins.
+- Developer allowlist access for Map Editor and USB Device Config is configured only on the API via `DEV_USER_EMAILS`.
+- `DEV_USER_EMAILS` supports CSV, JSON array, or JSON object/hashmap formats.
+
 ## Seed Users
 
 Run DB setup + seed script:

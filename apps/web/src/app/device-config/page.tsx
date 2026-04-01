@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type {
   DeviceFeatureToggles,
   ScannerDeviceSummary,
@@ -17,6 +17,7 @@ type SessionUser = {
   email: string;
   role: "admin" | "manager" | "employee";
   orgId: string;
+  isDevAllowlisted?: boolean;
 };
 
 type UsbTargetsResponse = {
@@ -30,14 +31,6 @@ const defaultFeatures: DeviceFeatureToggles = {
   scannerPresence: true,
   debugMode: false,
 };
-
-function parseDevAllowlist() {
-  const raw = process.env.NEXT_PUBLIC_DEV_USER_EMAILS ?? "";
-  return raw
-    .split(",")
-    .map((entry) => entry.trim().toLowerCase())
-    .filter(Boolean);
-}
 
 export default function DeviceConfigPage() {
   const user = useAuthStore((state) => state.user);
@@ -59,9 +52,7 @@ export default function DeviceConfigPage() {
   const [bundle, setBundle] = useState<UsbConfigCommandBundle | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
 
-  const devAllowlist = useMemo(parseDevAllowlist, []);
-  const isDevUser = !!user?.email && devAllowlist.includes(user.email.toLowerCase());
-  const hasUsbAccess = user?.role === "admin" || isDevUser;
+  const hasUsbAccess = user?.role === "admin" || user?.isDevAllowlisted === true;
 
   const activeDeviceOptions = deviceKind === "tag" ? targets.tags : targets.scanners;
 
@@ -186,7 +177,7 @@ export default function DeviceConfigPage() {
       {!isBootstrapping && !hasUsbAccess ? (
         <GlassCard variant="soft">
           <p className="text-sm text-error">
-            This dashboard is restricted to admins and dev allowlisted emails (NEXT_PUBLIC_DEV_USER_EMAILS).
+            This dashboard is restricted to admins and allowlisted developer accounts.
           </p>
         </GlassCard>
       ) : null}

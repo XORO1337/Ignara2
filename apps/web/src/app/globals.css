@@ -49,6 +49,7 @@ body {
 body {
   margin: 0;
   min-height: 100vh;
+  overflow-x: clip;
   background:
     radial-gradient(circle at 15% -10%, rgb(var(--accent) / 0.12), transparent 44%),
     radial-gradient(circle at 110% 15%, rgb(var(--success) / 0.09), transparent 34%),
@@ -75,6 +76,17 @@ body {
 
 a {
   color: inherit;
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: rgb(var(--accent));
+}
+
+select {
+  color: rgb(var(--text));
+  background: rgb(var(--panel-strong));
+  border-color: rgb(var(--outline));
 }
 
 .font-data {

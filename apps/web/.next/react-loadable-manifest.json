@@ -1,1 +1,8 @@
-{}
+{
+  "app/dashboard/page.tsx -> ../../components/live-map": {
+    "id": "app/dashboard/page.tsx -> ../../components/live-map",
+    "files": [
+      "static/chunks/_app-pages-browser_src_components_live-map_tsx.js"
+    ]
+  }
+}

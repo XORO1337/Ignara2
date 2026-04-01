@@ -5,32 +5,28 @@ import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
 import { MapsService } from "./maps.service";
 
+type SessionUser = {
+  orgId?: string;
+  role?: string;
+  isDevAllowlisted?: boolean;
+};
+
 @Controller("maps")
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles()
 export class MapsController {
   constructor(private readonly mapsService: MapsService) {}
 
-  private isDevUser(email?: string) {
-    const configured = (process.env.DEV_USER_EMAILS ?? "")
-      .split(",")
-      .map((entry) => entry.trim().toLowerCase())
-      .filter(Boolean);
-
-    return !!email && configured.includes(email.toLowerCase());
-  }
-
-  private assertAdminOrDev(request: Request & { user?: { role?: string; email?: string } }) {
+  private assertAdminOrDev(request: Request & { user?: SessionUser }) {
     const role = request.user?.role;
-    const email = request.user?.email;
-    if (role === "admin" || this.isDevUser(email)) {
+    if (role === "admin" || request.user?.isDevAllowlisted) {
       return;
     }
 
     throw new ForbiddenException("Only admin and dev users can access map editor endpoints");
   }
 
-  private getOrgId(request: Request & { user?: { orgId: string } }) {
+  private getOrgId(request: Request & { user?: SessionUser }) {
     const orgId = request.user?.orgId;
     if (!orgId) {
       throw new UnauthorizedException("Missing organization context");
@@ -39,23 +35,23 @@ export class MapsController {
   }
 
   @Get()
-  list(@Req() request: Request & { user?: { orgId: string } }) {
-    this.assertAdminOrDev(request as Request & { user?: { role?: string; email?: string } });
+  list(@Req() request: Request & { user?: SessionUser }) {
+    this.assertAdminOrDev(request);
     return this.mapsService.listByOrg(this.getOrgId(request));
   }
 
   @Get(":id")
   getById(
-    @Req() request: Request & { user?: { orgId: string } },
+    @Req() request: Request & { user?: SessionUser },
     @Param("id") id: string,
   ) {
-    this.assertAdminOrDev(request as Request & { user?: { role?: string; email?: string } });
+    this.assertAdminOrDev(request);
     return this.mapsService.getById(this.getOrgId(request), id);
   }
 
   @Post()
   save(
-    @Req() request: Request & { user?: { orgId: string } },
+    @Req() request: Request & { user?: SessionUser },
     @Body()
     body: {
       id?: string;
@@ -63,7 +59,7 @@ export class MapsController {
       jsonConfig: Record<string, unknown>;
     },
   ) {
-    this.assertAdminOrDev(request as Request & { user?: { role?: string; email?: string } });
+    this.assertAdminOrDev(request);
 
     if (!body?.name || typeof body.jsonConfig !== "object" || body.jsonConfig === null) {
       throw new BadRequestException("Map payload must include name and jsonConfig");

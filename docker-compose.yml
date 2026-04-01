@@ -54,7 +54,7 @@ services:
       MQTT_URL: mqtt://mosquitto:1883
       JWT_ACCESS_SECRET: replace-me
       JWT_ACCESS_TTL: 15m
-      CORS_ORIGIN: http://localhost:3000
+      DEV_USER_EMAILS: admin@ignara.local
     volumes:
       - ./:/workspace
       - ./data/minio:/workspace/data
@@ -70,7 +70,5 @@ services:
     command: >
       sh -c "corepack enable && corepack prepare pnpm@9.12.0 --activate &&
       pnpm install --no-frozen-lockfile && pnpm --filter @ignara/web dev"
-    environment:
-      NEXT_PUBLIC_API_URL: http://localhost:3001
     volumes:
       - ./:/workspace

@@ -42,7 +42,8 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
       if (!width || Number.isNaN(width)) {
         return;
       }
-      setStageSize({ width: Math.max(400, width), height: Math.max(320, Math.floor(width * 0.62)) });
+      const nextWidth = Math.max(1, width);
+      setStageSize({ width: nextWidth, height: Math.max(220, Math.floor(nextWidth * 0.62)) });
     });
 
     resizeObserver.observe(node);
@@ -162,7 +163,7 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
   return (
     <div
       ref={wrapperRef}
-      className="rounded-2xl border border-outline/60 bg-panel/70 p-3 shadow-glass backdrop-blur-sm"
+      className="overflow-hidden rounded-2xl border border-outline/60 bg-panel/70 p-3 shadow-glass backdrop-blur-sm"
       onDragOver={(event) => event.preventDefault()}
       onDrop={handleDrop}
     >

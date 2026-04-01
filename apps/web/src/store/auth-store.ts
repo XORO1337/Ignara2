@@ -7,6 +7,7 @@ type SessionUser = {
   email: string;
   role: "admin" | "manager" | "employee";
   orgId: string;
+  isDevAllowlisted?: boolean;
 };
 
 type AuthState = {

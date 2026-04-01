@@ -43,27 +43,29 @@ export function parseRoomsFromMapConfig(jsonConfig: Record<string, unknown> | nu
     return [];
   }
 
-  return roomsValue
-    .map((entry, index) => {
-      if (!entry || typeof entry !== "object") {
-        return null;
-      }
+  const parsedRooms: RoomZone[] = [];
 
-      const candidate = entry as Record<string, unknown>;
-      const id = typeof candidate.id === "string" ? candidate.id : `room-${index + 1}`;
-      const label = typeof candidate.label === "string" ? candidate.label : id;
+  roomsValue.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
 
-      return {
-        id,
-        label,
-        scannerDeviceId: typeof candidate.scannerDeviceId === "string" ? candidate.scannerDeviceId : undefined,
-        x: toNumber(candidate.x, 60 + index * 18),
-        y: toNumber(candidate.y, 60 + index * 14),
-        w: toNumber(candidate.w, 140),
-        h: toNumber(candidate.h, 90),
-      } satisfies RoomZone;
-    })
-    .filter((entry): entry is RoomZone => entry !== null);
+    const candidate = entry as Record<string, unknown>;
+    const id = typeof candidate.id === "string" ? candidate.id : `room-${index + 1}`;
+    const label = typeof candidate.label === "string" ? candidate.label : id;
+
+    parsedRooms.push({
+      id,
+      label,
+      scannerDeviceId: typeof candidate.scannerDeviceId === "string" ? candidate.scannerDeviceId : undefined,
+      x: toNumber(candidate.x, 60 + index * 18),
+      y: toNumber(candidate.y, 60 + index * 14),
+      w: toNumber(candidate.w, 140),
+      h: toNumber(candidate.h, 90),
+    });
+  });
+
+  return parsedRooms;
 }
 
 function parsePropsFromMapConfig(jsonConfig: Record<string, unknown> | null | undefined): MapPropElement[] {
@@ -72,27 +74,29 @@ function parsePropsFromMapConfig(jsonConfig: Record<string, unknown> | null | un
     return [];
   }
 
-  return propsValue
-    .map((entry, index) => {
-      if (!entry || typeof entry !== "object") {
-        return null;
-      }
+  const parsedProps: MapPropElement[] = [];
 
-      const candidate = entry as Record<string, unknown>;
-      const id = typeof candidate.id === "string" ? candidate.id : `prop-${index + 1}`;
-      const label = typeof candidate.label === "string" ? candidate.label : `Prop ${index + 1}`;
+  propsValue.forEach((entry, index) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
 
-      return {
-        id,
-        label,
-        x: toNumber(candidate.x, 120 + index * 16),
-        y: toNumber(candidate.y, 120 + index * 16),
-        w: toNumber(candidate.w, 42),
-        h: toNumber(candidate.h, 42),
-        fill: typeof candidate.fill === "string" ? candidate.fill : "rgba(244,114,182,0.35)",
-      } satisfies MapPropElement;
-    })
-    .filter((entry): entry is MapPropElement => entry !== null);
+    const candidate = entry as Record<string, unknown>;
+    const id = typeof candidate.id === "string" ? candidate.id : `prop-${index + 1}`;
+    const label = typeof candidate.label === "string" ? candidate.label : `Prop ${index + 1}`;
+
+    parsedProps.push({
+      id,
+      label,
+      x: toNumber(candidate.x, 120 + index * 16),
+      y: toNumber(candidate.y, 120 + index * 16),
+      w: toNumber(candidate.w, 42),
+      h: toNumber(candidate.h, 42),
+      fill: typeof candidate.fill === "string" ? candidate.fill : "rgba(244,114,182,0.35)",
+    });
+  });
+
+  return parsedProps;
 }
 
 export function parseBackgroundFromMapConfig(

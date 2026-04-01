@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AppButton, AppContainer, GlassCard, StatusPill } from "../components/ui";
+import { AppContainer, GlassCard, StatusPill } from "../components/ui";
 
 export default function HomePage() {
   return (
@@ -15,11 +15,17 @@ export default function HomePage() {
           Managers monitor occupancy in real time, assign tag network credentials remotely, and deliver team messages instantly.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/login">
-            <AppButton>Sign In To Workspace</AppButton>
+          <Link
+            href="/login"
+            className="inline-flex items-center justify-center rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-contrast transition duration-200 hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+          >
+            Sign In To Workspace
           </Link>
-          <Link href="/dashboard">
-            <AppButton variant="secondary">Open Live Dashboard</AppButton>
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center justify-center rounded-xl border border-outline bg-panel px-4 py-2 text-sm font-semibold text-text transition duration-200 hover:bg-panel-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+          >
+            Open Live Dashboard
           </Link>
           <StatusPill tone="success">Realtime Enabled</StatusPill>
           <StatusPill tone="neutral">Self Hosted</StatusPill>

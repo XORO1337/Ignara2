@@ -1,4 +1,44 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+function trimTrailingSlash(value: string): string {
+  return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function resolveCodespacesApiUrl(host: string, protocol: string): string | null {
+  if (!host.includes("-3000.")) {
+    return null;
+  }
+
+  return `${protocol}//${host.replace("-3000.", "-3001.")}`;
+}
+
+function resolveBrowserApiUrl(): string {
+  const { host, hostname, port, protocol } = window.location;
+
+  const codespacesApiUrl = resolveCodespacesApiUrl(host, protocol);
+  if (codespacesApiUrl) {
+    return codespacesApiUrl;
+  }
+
+  if (hostname === "localhost" || hostname === "127.0.0.1" || port === "3000") {
+    return `${protocol}//${hostname}:3001`;
+  }
+
+  return `${protocol}//${hostname}:3001`;
+}
+
+function resolveApiUrl(): string {
+  const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (configuredApiUrl) {
+    return trimTrailingSlash(configuredApiUrl);
+  }
+
+  if (typeof window !== "undefined") {
+    return trimTrailingSlash(resolveBrowserApiUrl());
+  }
+
+  return "http://localhost:3001";
+}
+
+export const API_URL = resolveApiUrl();
 
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response;

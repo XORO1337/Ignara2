@@ -12,6 +12,7 @@ type LoginResponse = {
     email: string;
     role: "admin" | "manager" | "employee";
     orgId: string;
+    isDevAllowlisted?: boolean;
   };
 };
 
@@ -36,7 +37,7 @@ export default function LoginPage() {
     } catch (caught) {
       if (caught instanceof Error && caught.message.includes("Cannot reach API")) {
         setError(
-          `Cannot reach API at ${API_URL}. Start backend with: pnpm --filter @ignara/api dev. In Codespaces, set NEXT_PUBLIC_API_URL to your forwarded 3001 URL and restart web.`,
+          `Cannot reach API at ${API_URL}. Start backend with: pnpm --filter @ignara/api dev. If you are using Codespaces, make sure port 3001 is forwarded and then reload the page.`,
         );
         return;
       }

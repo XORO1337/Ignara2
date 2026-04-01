@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { UsersService } from "../users/users.service";
+import { isDevAllowlistedEmail } from "../common/dev-user-allowlist";
 import { hashPassword, needsPasswordUpgrade, verifyPassword } from "./password";
 
 @Injectable()
@@ -26,6 +27,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       orgId: user.orgId,
+      isDevAllowlisted: isDevAllowlistedEmail(user.email),
     };
 
     const accessToken = await this.jwtService.signAsync(payload);
