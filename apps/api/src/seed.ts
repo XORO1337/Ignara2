@@ -21,15 +21,40 @@ async function seed() {
   }
 
   const seedUsers: Array<Partial<UserEntity>> = [
-    { email: "admin@ignara.local", role: "admin", orgId: org.id, password: hashPassword("admin123") },
-    { email: "manager@ignara.local", role: "manager", orgId: org.id, password: hashPassword("manager123") },
-    { email: "employee@ignara.local", role: "employee", orgId: org.id, password: hashPassword("employee123") },
+    {
+      email: "admin@ignara.local",
+      role: "admin",
+      gender: "other",
+      orgId: org.id,
+      password: hashPassword("admin123"),
+    },
+    {
+      email: "manager@ignara.local",
+      role: "manager",
+      gender: "male",
+      orgId: org.id,
+      password: hashPassword("manager123"),
+    },
+    {
+      email: "employee@ignara.local",
+      role: "employee",
+      gender: "female",
+      orgId: org.id,
+      password: hashPassword("employee123"),
+    },
   ];
 
   for (const candidate of seedUsers) {
     const exists = await userRepo.findOne({ where: { email: candidate.email } });
     if (!exists) {
       await userRepo.save(userRepo.create({ id: randomUUID(), ...candidate }));
+      continue;
+    }
+
+    const nextGender = candidate.gender ?? exists.gender ?? "other";
+    if (exists.gender !== nextGender) {
+      exists.gender = nextGender;
+      await userRepo.save(exists);
     }
   }
 

@@ -3,11 +3,12 @@
 import dynamic from "next/dynamic";
 import type { LastKnownLocation } from "@ignara/sharedtypes";
 import { useEffect, useState } from "react";
+import type { Socket } from "socket.io-client";
 import { apiRequest } from "../../lib/api";
-import { locationSocket } from "../../lib/socket";
+import { createLocationSocket } from "../../lib/socket";
 import { parseMapEditorData, pickActiveMap } from "../../lib/map-config";
 import { AppButton, AppContainer, AppInput, GlassCard, StatusPill } from "../../components/ui";
-import { useAuthStore } from "../../store/auth-store";
+import { useAuthStore, type SessionUser } from "../../store/auth-store";
 import { useMapEditorStore } from "../../store/map-editor-store";
 
 const MapEditorCanvas = dynamic(
@@ -29,14 +30,6 @@ type PersistedMap = {
   name: string;
   jsonConfig?: Record<string, unknown> | null;
 };
-
-type SessionUser = {
-  sub: string;
-  email: string;
-  role: "admin" | "manager" | "employee";
-  orgId: string;
-  isDevAllowlisted?: boolean;
-}
 
 function readFileAsDataUrl(file: File) {
   return new Promise<string>((resolve, reject) => {
@@ -88,6 +81,7 @@ export default function MapEditorPage() {
   useEffect(() => {
     let active = true;
     let orgId = "";
+    let locationSocket: Socket | null = null;
 
     async function hydrateMap() {
       try {
@@ -141,20 +135,27 @@ export default function MapEditorPage() {
 
         if (active) {
           setSocketState("connecting");
-          locationSocket.on("connect", () => {
-            locationSocket.emit("join", { room: `org:${orgId}:locations` });
+          const socket = await createLocationSocket();
+          if (!active) {
+            socket.disconnect();
+            return;
+          }
+
+          locationSocket = socket;
+          socket.on("connect", () => {
+            socket.emit("join", { room: `org:${orgId}:locations` });
             setSocketState("connected");
           });
-          locationSocket.on("disconnect", () => {
+          socket.on("disconnect", () => {
             setSocketState("disconnected");
           });
-          locationSocket.on("location:update", (location: LastKnownLocation) => {
+          socket.on("location:update", (location: LastKnownLocation) => {
             setLocations((prev) => {
               const rest = prev.filter((entry) => entry.employeeId !== location.employeeId);
               return [location, ...rest];
             });
           });
-          locationSocket.connect();
+          socket.connect();
         }
       } catch {
         if (active) {
@@ -170,10 +171,12 @@ export default function MapEditorPage() {
     void hydrateMap();
     return () => {
       active = false;
-      locationSocket.off("connect");
-      locationSocket.off("disconnect");
-      locationSocket.off("location:update");
-      locationSocket.disconnect();
+      if (locationSocket) {
+        locationSocket.off("connect");
+        locationSocket.off("disconnect");
+        locationSocket.off("location:update");
+        locationSocket.disconnect();
+      }
     };
   }, [setBackground, setProps, setRooms, setUser, user]);
 
@@ -299,6 +302,24 @@ export default function MapEditorPage() {
               Prop Element
             </button>
 
+            <button
+              type="button"
+              draggable
+              onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop-player-male")}
+              className="w-full rounded-xl border border-outline bg-panel-strong px-3 py-2 text-left text-sm hover:bg-panel"
+            >
+              Player Prop (Male)
+            </button>
+
+            <button
+              type="button"
+              draggable
+              onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop-player-female")}
+              className="w-full rounded-xl border border-outline bg-panel-strong px-3 py-2 text-left text-sm hover:bg-panel"
+            >
+              Player Prop (Female)
+            </button>
+
             <label className="block text-sm text-text-dim">
               Upload SVG Floor Plan
               <input className="mt-1 block w-full text-xs" type="file" accept=".svg,image/svg+xml" onChange={(event) => void importSvg(event)} />
@@ -329,6 +350,23 @@ export default function MapEditorPage() {
                     value={selectedRoom.scannerDeviceId ?? ""}
                     onChange={(event) => updateRoom(selectedRoom.id, { scannerDeviceId: event.target.value || undefined })}
                     placeholder="scanner-01"
+                  />
+                </label>
+                <label className="block text-sm text-text-dim">
+                  Beacon IDs (comma separated)
+                  <AppInput
+                    value={(selectedRoom.beaconIds ?? []).join(", ")}
+                    onChange={(event) => {
+                      const beaconIds = event.target.value
+                        .split(",")
+                        .map((entry) => entry.trim())
+                        .filter(Boolean);
+                      updateRoom(selectedRoom.id, {
+                        beaconIds,
+                        beaconId: beaconIds[0],
+                      });
+                    }}
+                    placeholder="beacon-room-a, beacon-room-a-2"
                   />
                 </label>
                 <label className="block text-sm text-text-dim">
@@ -363,6 +401,14 @@ export default function MapEditorPage() {
                     onChange={(event) => updateRoom(selectedRoom.id, { h: Number(event.target.value) })}
                   />
                 </label>
+                <label className="block text-sm text-text-dim">
+                  Rotation
+                  <AppInput
+                    type="number"
+                    value={selectedRoom.rotation ?? 0}
+                    onChange={(event) => updateRoom(selectedRoom.id, { rotation: Number(event.target.value) })}
+                  />
+                </label>
                 <AppButton type="button" variant="danger" onClick={() => removeRoom(selectedRoom.id)}>
                   Delete Room
                 </AppButton>
@@ -379,6 +425,22 @@ export default function MapEditorPage() {
                 <label className="block text-sm text-text-dim">
                   Fill
                   <AppInput value={selectedProp.fill ?? ""} onChange={(event) => updateProp(selectedProp.id, { fill: event.target.value })} />
+                </label>
+                <label className="block text-sm text-text-dim">
+                  Prop Type
+                  <select
+                    className="mt-1 w-full rounded-xl border border-outline/70 bg-panel px-3 py-2 text-sm text-text"
+                    value={selectedProp.propType}
+                    onChange={(event) =>
+                      updateProp(selectedProp.id, {
+                        propType: event.target.value as "generic" | "player-male" | "player-female",
+                      })
+                    }
+                  >
+                    <option value="generic">Generic</option>
+                    <option value="player-male">Player Male</option>
+                    <option value="player-female">Player Female</option>
+                  </select>
                 </label>
                 <label className="block text-sm text-text-dim">
                   X
@@ -410,6 +472,14 @@ export default function MapEditorPage() {
                     type="number"
                     value={selectedProp.h}
                     onChange={(event) => updateProp(selectedProp.id, { h: Number(event.target.value) })}
+                  />
+                </label>
+                <label className="block text-sm text-text-dim">
+                  Rotation
+                  <AppInput
+                    type="number"
+                    value={selectedProp.rotation}
+                    onChange={(event) => updateProp(selectedProp.id, { rotation: Number(event.target.value) })}
                   />
                 </label>
                 <AppButton type="button" variant="danger" onClick={() => removeProp(selectedProp.id)}>

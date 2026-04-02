@@ -1,6 +1,6 @@
 "use client";
 
-import type { LastKnownLocation, RoomZone } from "@ignara/sharedtypes";
+import type { LastKnownLocation, LocationMoveRequest, RoomZone, UserGender } from "@ignara/sharedtypes";
 import type { KonvaEventObject } from "konva/lib/Node";
 import type { MapBackgroundConfig, MapPropElement } from "../lib/map-config";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
@@ -13,6 +13,9 @@ type LiveMapProps = {
   background?: MapBackgroundConfig | null;
   interactive?: boolean;
   mapStorageKey?: string | null;
+  currentPlayerId?: string | null;
+  genderByEmployee?: Record<string, UserGender>;
+  onMovePlayer?: (payload: LocationMoveRequest) => Promise<void> | void;
 };
 
 const BASE_WIDTH = 960;
@@ -21,6 +24,8 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 2.8;
 const ZOOM_STEP = 1.06;
 const BLIP_RADIUS = 6;
+const MOVE_SPEED_PX_PER_SEC = 130;
+const MOVE_SYNC_INTERVAL_MS = 120;
 
 type LiveMapViewport = {
   x: number;
@@ -41,6 +46,14 @@ type PersistedLiveMapState = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function clampToMapX(value: number) {
+  return clamp(value, BLIP_RADIUS, BASE_WIDTH - BLIP_RADIUS);
+}
+
+function clampToMapY(value: number) {
+  return clamp(value, BLIP_RADIUS, BASE_HEIGHT - BLIP_RADIUS);
 }
 
 function getStorageKey(mapStorageKey: string | null | undefined) {
@@ -80,6 +93,63 @@ function getRoomBlipBounds(room: RoomZone) {
   };
 }
 
+function propFillForType(propType: string, fallback?: string) {
+  if (propType === "player-male") {
+    return fallback ?? "rgba(56,189,248,0.35)";
+  }
+  if (propType === "player-female") {
+    return fallback ?? "rgba(244,114,182,0.38)";
+  }
+  return fallback ?? "rgba(244,114,182,0.35)";
+}
+
+function getMarkerStyle(gender: UserGender | undefined, connected: boolean) {
+  if (!connected) {
+    return {
+      fill: "rgba(148,163,184,0.82)",
+      stroke: "rgba(71,85,105,0.95)",
+      text: "rgba(241,245,249,0.92)",
+    };
+  }
+
+  if (gender === "male") {
+    return {
+      fill: "rgba(56,189,248,0.95)",
+      stroke: "rgba(14,116,144,0.96)",
+      text: "rgba(224,242,254,0.96)",
+    };
+  }
+
+  if (gender === "female") {
+    return {
+      fill: "rgba(244,114,182,0.96)",
+      stroke: "rgba(157,23,77,0.95)",
+      text: "rgba(252,231,243,0.96)",
+    };
+  }
+
+  return {
+    fill: "rgba(250,204,21,0.95)",
+    stroke: "rgba(161,98,7,0.95)",
+    text: "rgba(254,249,195,0.98)",
+  };
+}
+
+function findRoomContainingPoint(rooms: RoomZone[], x: number, y: number): RoomZone | null {
+  for (const room of rooms) {
+    const minX = Math.min(room.x, room.x + room.w);
+    const maxX = Math.max(room.x, room.x + room.w);
+    const minY = Math.min(room.y, room.y + room.h);
+    const maxY = Math.max(room.y, room.y + room.h);
+
+    if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+      return room;
+    }
+  }
+
+  return null;
+}
+
 export function LiveMap({
   rooms,
   locations,
@@ -87,9 +157,21 @@ export function LiveMap({
   background = null,
   interactive = false,
   mapStorageKey = null,
+  currentPlayerId = null,
+  genderByEmployee = {},
+  onMovePlayer,
 }: LiveMapProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<any>(null);
+  const pressedKeysRef = useRef<Record<string, boolean>>({});
+  const animationRef = useRef<number | null>(null);
+  const lastMoveSentAtRef = useRef(0);
+  const locationsRef = useRef<LastKnownLocation[]>(locations);
+  const blipOverridesRef = useRef<Record<string, BlipOverride>>({});
+  const roomsRef = useRef<RoomZone[]>(rooms);
+  const roomLookupRef = useRef<Map<string, RoomZone>>(new Map());
+  const defaultBlipPositionsRef = useRef<Map<string, { roomId: string; x: number; y: number }>>(new Map());
+  const onMovePlayerRef = useRef<LiveMapProps["onMovePlayer"]>(onMovePlayer);
   const [stageWidth, setStageWidth] = useState(BASE_WIDTH);
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [viewport, setViewport] = useState<LiveMapViewport>({ x: 0, y: 0, scale: 1 });
@@ -145,7 +227,11 @@ export function LiveMap({
   const fitScale = stageWidth / BASE_WIDTH;
 
   const roomLookup = useMemo(() => new Map(rooms.map((room) => [room.id, room])), [rooms]);
-  const connectedLocations = useMemo(() => locations.filter((location) => location.connected), [locations]);
+  const mappedLocations = useMemo(
+    () => locations.filter((location) => roomLookup.has(location.roomId)),
+    [locations, roomLookup],
+  );
+  const connectedCount = useMemo(() => locations.filter((location) => location.connected).length, [locations]);
 
   function clampViewport(next: LiveMapViewport) {
     const zoom = clamp(next.scale, MIN_ZOOM, MAX_ZOOM);
@@ -229,12 +315,17 @@ export function LiveMap({
 
   useEffect(() => {
     setBlipOverrides((prev) => {
-      const connectedById = new Map(connectedLocations.map((location) => [location.employeeId, location]));
+      const mappedById = new Map(mappedLocations.map((location) => [location.employeeId, location]));
       let changed = false;
       const next: Record<string, BlipOverride> = {};
 
       Object.entries(prev).forEach(([employeeId, value]) => {
-        const location = connectedById.get(employeeId);
+        if (employeeId === currentPlayerId && roomLookup.has(value.roomId)) {
+          next[employeeId] = value;
+          return;
+        }
+
+        const location = mappedById.get(employeeId);
         if (!location) {
           changed = true;
           return;
@@ -249,17 +340,17 @@ export function LiveMap({
 
       return changed ? next : prev;
     });
-  }, [connectedLocations, roomLookup]);
+  }, [currentPlayerId, mappedLocations, roomLookup]);
 
   const locationsByRoom = useMemo(() => {
     const grouped = new Map<string, LastKnownLocation[]>();
-    for (const location of connectedLocations) {
+    for (const location of mappedLocations) {
       const current = grouped.get(location.roomId) ?? [];
       current.push(location);
       grouped.set(location.roomId, current);
     }
     return grouped;
-  }, [connectedLocations]);
+  }, [mappedLocations]);
 
   const defaultBlipPositions = useMemo(() => {
     const positions = new Map<string, { roomId: string; x: number; y: number }>();
@@ -283,7 +374,31 @@ export function LiveMap({
     return positions;
   }, [locationsByRoom, rooms]);
 
-  const unplacedCount = connectedLocations.filter((location) => !roomLookup.has(location.roomId)).length;
+  useEffect(() => {
+    locationsRef.current = locations;
+  }, [locations]);
+
+  useEffect(() => {
+    blipOverridesRef.current = blipOverrides;
+  }, [blipOverrides]);
+
+  useEffect(() => {
+    roomsRef.current = rooms;
+  }, [rooms]);
+
+  useEffect(() => {
+    roomLookupRef.current = roomLookup;
+  }, [roomLookup]);
+
+  useEffect(() => {
+    defaultBlipPositionsRef.current = defaultBlipPositions;
+  }, [defaultBlipPositions]);
+
+  useEffect(() => {
+    onMovePlayerRef.current = onMovePlayer;
+  }, [onMovePlayer]);
+
+  const unplacedCount = locations.filter((location) => !roomLookup.has(location.roomId)).length;
   const stageScale = fitScale * viewport.scale;
 
   function setClampedViewport(next: LiveMapViewport) {
@@ -330,6 +445,147 @@ export function LiveMap({
       y: Math.round(pointer.y - worldPoint.y * nextScale),
     });
   }
+
+  useEffect(() => {
+    if (!interactive || !currentPlayerId) {
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      return;
+    }
+
+    function toMoveKey(key: string): "w" | "a" | "s" | "d" | null {
+      if (key === "w" || key === "arrowup") {
+        return "w";
+      }
+      if (key === "a" || key === "arrowleft") {
+        return "a";
+      }
+      if (key === "s" || key === "arrowdown") {
+        return "s";
+      }
+      if (key === "d" || key === "arrowright") {
+        return "d";
+      }
+      return null;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const key = toMoveKey(event.key.toLowerCase());
+      if (!key) {
+        return;
+      }
+
+      const target = event.target as HTMLElement | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) {
+        return;
+      }
+
+      pressedKeysRef.current[key] = true;
+      event.preventDefault();
+    };
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      const key = toMoveKey(event.key.toLowerCase());
+      if (!key) {
+        return;
+      }
+
+      pressedKeysRef.current[key] = false;
+      event.preventDefault();
+    };
+
+    let previousFrameAt = performance.now();
+
+    const tick = (frameAt: number) => {
+      const deltaSec = Math.max(0.001, (frameAt - previousFrameAt) / 1000);
+      previousFrameAt = frameAt;
+
+      const keyState = pressedKeysRef.current;
+      const horizontal = (keyState.d ? 1 : 0) - (keyState.a ? 1 : 0);
+      const vertical = (keyState.s ? 1 : 0) - (keyState.w ? 1 : 0);
+
+      if (horizontal !== 0 || vertical !== 0) {
+        const override = blipOverridesRef.current[currentPlayerId];
+        const currentLocation = locationsRef.current.find((entry) => entry.employeeId === currentPlayerId);
+        const activeRoomId = override?.roomId ?? currentLocation?.roomId ?? roomsRef.current[0]?.id;
+        const activeRoom = activeRoomId ? roomLookupRef.current.get(activeRoomId) : null;
+
+        if (activeRoom) {
+          const activeBounds = getRoomBlipBounds(activeRoom);
+          const defaultPoint = defaultBlipPositionsRef.current.get(currentPlayerId) ?? {
+            roomId: activeRoom.id,
+            x: clamp(activeRoom.x + activeRoom.w / 2, activeBounds.minX, activeBounds.maxX),
+            y: clamp(activeRoom.y + activeRoom.h / 2, activeBounds.minY, activeBounds.maxY),
+          };
+
+          const activePoint =
+            override
+              ? {
+                  roomId: override.roomId,
+                  x: clampToMapX(override.x),
+                  y: clampToMapY(override.y),
+                }
+              : defaultPoint;
+
+          const length = Math.hypot(horizontal, vertical) || 1;
+          const normalizedX = horizontal / length;
+          const normalizedY = vertical / length;
+
+          const rawX = clampToMapX(activePoint.x + normalizedX * MOVE_SPEED_PX_PER_SEC * deltaSec);
+          const rawY = clampToMapY(activePoint.y + normalizedY * MOVE_SPEED_PX_PER_SEC * deltaSec);
+
+          const containingRoom = findRoomContainingPoint(roomsRef.current, rawX, rawY);
+          const targetRoom = containingRoom ?? activeRoom;
+          const targetBounds = containingRoom ? getRoomBlipBounds(targetRoom) : null;
+
+          const nextX = targetBounds ? clamp(rawX, targetBounds.minX, targetBounds.maxX) : rawX;
+          const nextY = targetBounds ? clamp(rawY, targetBounds.minY, targetBounds.maxY) : rawY;
+          const nextRoomId = containingRoom?.id ?? activeRoom.id;
+
+          setBlipOverrides((prev) => {
+            const next = {
+              ...prev,
+              [currentPlayerId]: {
+                roomId: nextRoomId,
+                x: Math.round(nextX),
+                y: Math.round(nextY),
+              },
+            };
+            blipOverridesRef.current = next;
+            return next;
+          });
+
+          const moveHandler = onMovePlayerRef.current;
+          if (moveHandler && frameAt - lastMoveSentAtRef.current >= MOVE_SYNC_INTERVAL_MS) {
+            lastMoveSentAtRef.current = frameAt;
+            void moveHandler({
+              roomId: nextRoomId,
+              x: Math.round(nextX),
+              y: Math.round(nextY),
+            });
+          }
+        }
+      }
+
+      animationRef.current = requestAnimationFrame(tick);
+    };
+
+    animationRef.current = requestAnimationFrame(tick);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      if (animationRef.current !== null) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+      pressedKeysRef.current = {};
+    };
+  }, [currentPlayerId, interactive]);
 
   return (
     <div ref={wrapperRef} className="rounded-2xl border border-outline/60 bg-panel/72 p-3 shadow-card backdrop-blur-sm">
@@ -387,8 +643,9 @@ export function LiveMap({
               y={entry.y}
               width={entry.w}
               height={entry.h}
+              rotation={entry.rotation ?? 0}
               cornerRadius={8}
-              fill={entry.fill ?? "rgba(244,114,182,0.35)"}
+              fill={propFillForType(entry.propType, entry.fill)}
               stroke="rgba(244,114,182,0.92)"
               strokeWidth={1.4}
             />
@@ -415,6 +672,7 @@ export function LiveMap({
                 y={room.y}
                 width={room.w}
                 height={room.h}
+                rotation={room.rotation ?? 0}
                 cornerRadius={12}
                 fill={roomLocations.length > 0 ? "rgba(56,189,248,0.27)" : "rgba(160,190,210,0.14)"}
                 stroke={roomLocations.length > 0 ? "rgba(56,189,248,0.95)" : "rgba(140,170,190,0.65)"}
@@ -434,8 +692,10 @@ export function LiveMap({
             />
           ))}
 
-          {connectedLocations.map((location) => {
-            const room = roomLookup.get(location.roomId);
+          {mappedLocations.map((location) => {
+            const overridden = blipOverrides[location.employeeId];
+            const effectiveRoomId = overridden?.roomId ?? location.roomId;
+            const room = roomLookup.get(effectiveRoomId) ?? roomLookup.get(location.roomId);
             if (!room) {
               return null;
             }
@@ -447,15 +707,16 @@ export function LiveMap({
               y: clamp(room.y + room.h / 2, bounds.minY, bounds.maxY),
             };
 
-            const overridden = blipOverrides[location.employeeId];
-            const activePoint =
-              overridden && overridden.roomId === location.roomId
-                ? {
-                    roomId: overridden.roomId,
-                    x: clamp(overridden.x, bounds.minX, bounds.maxX),
-                    y: clamp(overridden.y, bounds.minY, bounds.maxY),
-                  }
-                : defaultPoint;
+            const activePoint = overridden
+              ? {
+                  roomId: overridden.roomId,
+                  x: clampToMapX(overridden.x),
+                  y: clampToMapY(overridden.y),
+                }
+              : defaultPoint;
+
+            const style = getMarkerStyle(genderByEmployee[location.employeeId], location.connected);
+            const canDragMarker = interactive && currentPlayerId === location.employeeId;
 
             return (
               <Fragment key={`${location.employeeId}-marker`}>
@@ -463,40 +724,67 @@ export function LiveMap({
                   x={activePoint.x}
                   y={activePoint.y}
                   radius={BLIP_RADIUS}
-                  fill="rgba(16,185,129,0.95)"
-                  stroke="rgba(15,118,110,0.95)"
+                  fill={style.fill}
+                  stroke={style.stroke}
                   strokeWidth={1.4}
-                  draggable={interactive}
+                  draggable={canDragMarker}
                   dragBoundFunc={(position) => ({
-                    x: clamp(position.x, bounds.minX, bounds.maxX),
-                    y: clamp(position.y, bounds.minY, bounds.maxY),
+                    x: clampToMapX(position.x),
+                    y: clampToMapY(position.y),
                   })}
                   onDragEnd={(event) => {
-                    if (!interactive) {
+                    if (!canDragMarker) {
                       return;
                     }
 
-                    const nextX = clamp(event.target.x(), bounds.minX, bounds.maxX);
-                    const nextY = clamp(event.target.y(), bounds.minY, bounds.maxY);
+                    const rawX = clampToMapX(event.target.x());
+                    const rawY = clampToMapY(event.target.y());
+                    const droppedRoom = findRoomContainingPoint(roomsRef.current, rawX, rawY);
+                    const fallbackRoomId = blipOverridesRef.current[location.employeeId]?.roomId ?? location.roomId;
+                    const fallbackRoom = roomLookupRef.current.get(fallbackRoomId);
+                    const resolvedRoom = droppedRoom ?? fallbackRoom;
+                    const resolvedBounds = resolvedRoom ? getRoomBlipBounds(resolvedRoom) : null;
+                    const nextX = resolvedBounds ? clamp(rawX, resolvedBounds.minX, resolvedBounds.maxX) : rawX;
+                    const nextY = resolvedBounds ? clamp(rawY, resolvedBounds.minY, resolvedBounds.maxY) : rawY;
+                    const nextRoomId = droppedRoom?.id ?? fallbackRoomId;
+
+                    if (!nextRoomId) {
+                      return;
+                    }
+
                     event.target.position({ x: nextX, y: nextY });
 
-                    setBlipOverrides((prev) => ({
-                      ...prev,
-                      [location.employeeId]: {
-                        roomId: location.roomId,
+                    setBlipOverrides((prev) => {
+                      const next = {
+                        ...prev,
+                        [location.employeeId]: {
+                          roomId: nextRoomId,
+                          x: Math.round(nextX),
+                          y: Math.round(nextY),
+                        },
+                      };
+                      blipOverridesRef.current = next;
+                      return next;
+                    });
+
+                    const moveHandler = onMovePlayerRef.current;
+                    if (moveHandler) {
+                      void moveHandler({
+                        roomId: nextRoomId,
                         x: Math.round(nextX),
                         y: Math.round(nextY),
-                      },
-                    }));
+                      });
+                    }
                   }}
                   onDblClick={() => {
-                    if (!interactive) {
+                    if (!canDragMarker) {
                       return;
                     }
 
                     setBlipOverrides((prev) => {
                       const next = { ...prev };
                       delete next[location.employeeId];
+                      blipOverridesRef.current = next;
                       return next;
                     });
                   }}
@@ -506,7 +794,7 @@ export function LiveMap({
                   y={activePoint.y - 6}
                   text={location.employeeId}
                   fontSize={11}
-                  fill="rgba(231,241,255,0.95)"
+                  fill={style.text}
                 />
               </Fragment>
             );
@@ -517,7 +805,8 @@ export function LiveMap({
       <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-dim">
         <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Rooms: {rooms.length}</span>
         <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Props: {mapProps.length}</span>
-        <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Connected users: {connectedLocations.length}</span>
+        <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Connected users: {connectedCount}</span>
+        <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Mapped users: {mappedLocations.length}</span>
         <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Unmapped users: {unplacedCount}</span>
         {interactive ? (
           <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Zoom: {Math.round(viewport.scale * 100)}%</span>
@@ -540,7 +829,7 @@ export function LiveMap({
           >
             Reset Blips
           </button>
-          <span>Drag map to pan, scroll to zoom, drag blips to reposition inside room zones.</span>
+          <span>Drag map to pan, scroll to zoom, use WASD or arrow keys to move your marker, and drag your own marker for fine adjustment.</span>
         </div>
       ) : (
         <p className="mt-3 text-xs text-text-dim">Read-only map mode.</p>
@@ -549,7 +838,11 @@ export function LiveMap({
       <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-text-dim">
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-success" />
-          Employee marker
+          Connected marker
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
+          Disconnected marker
         </span>
         <span className="inline-flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-full bg-accent/85" />

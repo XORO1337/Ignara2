@@ -3,17 +3,11 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppButton, AppContainer, AppInput, GlassCard } from "../../components/ui";
-import { API_URL, apiRequest } from "../../lib/api";
-import { useAuthStore } from "../../store/auth-store";
+import { apiRequest } from "../../lib/api";
+import { useAuthStore, type SessionUser } from "../../store/auth-store";
 
 type LoginResponse = {
-  user: {
-    sub: string;
-    email: string;
-    role: "admin" | "manager" | "employee";
-    orgId: string;
-    isDevAllowlisted?: boolean;
-  };
+  user: SessionUser;
 };
 
 export default function LoginPage() {
@@ -37,7 +31,7 @@ export default function LoginPage() {
     } catch (caught) {
       if (caught instanceof Error && caught.message.includes("Cannot reach API")) {
         setError(
-          `Cannot reach API at ${API_URL}. Start backend with: pnpm --filter @ignara/api dev. If you are using Codespaces, make sure port 3001 is forwarded and then reload the page.`,
+          `${caught.message} Start backend with: pnpm --filter @ignara/api dev. If you are using Codespaces, forward the API port and reload the page.`,
         );
         return;
       }

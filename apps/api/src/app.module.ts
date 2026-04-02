@@ -21,7 +21,15 @@ const DEFAULT_DATABASE_URL = "postgresql://ignara:ignara123@localhost:5432/ignar
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ["apps/api/.env", ".env", "../.env", "../../.env"],
+      envFilePath: [
+        ".env.ports",
+        "../.env.ports",
+        "../../.env.ports",
+        "apps/api/.env",
+        ".env",
+        "../.env",
+        "../../.env",
+      ],
     }),
     TypeOrmModule.forRoot({
       type: "postgres",

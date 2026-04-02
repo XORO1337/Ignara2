@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, Post, Put, Req, UnauthorizedException, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, ForbiddenException, Get, Post, Req, UnauthorizedException, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import type { UsbDeviceConfigRequest } from "@ignara/sharedtypes";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -64,27 +64,6 @@ export class DevicesController {
     });
   }
 
-  @Put("tags/:id/wifi")
-  assignWifi(
-    @Req() request: Request & { user?: SessionUser },
-    @Param("id") id: string,
-    @Body() body: { ssid: string; password: string },
-  ) {
-    const ssid = body?.ssid?.trim();
-    const password = body?.password?.trim();
-
-    if (!ssid || !password) {
-      throw new BadRequestException("Both ssid and password are required");
-    }
-
-    return this.devicesService.assignWifiCredentials({
-      orgId: this.getOrgId(request),
-      deviceId: id,
-      ssid,
-      password,
-    });
-  }
-
   @Get("usb/targets")
   @Roles()
   async listUsbTargets(@Req() request: Request & { user?: SessionUser }) {
@@ -111,10 +90,6 @@ export class DevicesController {
       throw new BadRequestException("deviceId is required");
     }
 
-    if (!body?.wifiSsid?.trim() || !body?.wifiPassword?.trim()) {
-      throw new BadRequestException("wifiSsid and wifiPassword are required");
-    }
-
     if (body.enablePasswordProtection && !body?.secureConfigPassword?.trim()) {
       throw new BadRequestException("secureConfigPassword is required when password protection is enabled");
     }
@@ -124,8 +99,6 @@ export class DevicesController {
       request: {
         ...body,
         deviceId: body.deviceId.trim(),
-        wifiSsid: body.wifiSsid.trim(),
-        wifiPassword: body.wifiPassword.trim(),
         secureConfigPassword: body.secureConfigPassword?.trim(),
       },
     });

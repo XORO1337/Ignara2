@@ -1,4 +1,5 @@
 export type Role = "admin" | "manager" | "employee";
+export type UserGender = "male" | "female" | "other";
 
 export interface ScannerLocationEvent {
   employeeId: string;
@@ -6,6 +7,10 @@ export interface ScannerLocationEvent {
   roomId: string;
   rssi: number;
   event: "enter" | "exit";
+  beaconId?: string;
+  beaconRssi?: number;
+  sourceType?: "ble";
+  proximityScore?: number;
   orgId?: string;
   ts?: number;
 }
@@ -17,6 +22,14 @@ export interface LastKnownLocation {
   scannerId: string;
   connected: boolean;
   lastEvent: "enter" | "exit";
+  x?: number;
+  y?: number;
+  signalSource?: "ble" | "manual";
+  movementSource?: "wasd" | "drag" | "scanner";
+  beaconId?: string;
+  beaconRssi?: number;
+  proximityScore?: number;
+  signalLostAt?: number;
   disconnectedAt?: number;
   ts: number;
 }
@@ -33,10 +46,19 @@ export interface RoomZone {
   id: string;
   label: string;
   scannerDeviceId?: string;
+  beaconId?: string;
+  beaconIds?: string[];
   x: number;
   y: number;
   w: number;
   h: number;
+  rotation?: number;
+}
+
+export interface LocationMoveRequest {
+  roomId?: string;
+  x: number;
+  y: number;
 }
 
 export interface MapConfig {
@@ -52,14 +74,7 @@ export interface TagDeviceSummary {
   orgId: string;
   type: "tag";
   roomId?: string | null;
-  wifiSsid?: string | null;
-  wifiUpdatedAt?: string | null;
-}
-
-export interface DeviceWifiConfigCommand {
-  ssid: string;
-  password: string;
-  ts: number;
+  bleProvisionedAt?: string | null;
 }
 
 export interface ScannerDeviceSummary {
@@ -79,8 +94,8 @@ export interface DeviceFeatureToggles {
 export interface UsbDeviceConfigRequest {
   deviceId: string;
   deviceKind: "tag" | "scanner";
-  wifiSsid: string;
-  wifiPassword: string;
+  bleEnabled?: boolean;
+  bleTxPowerDbm?: number;
   enablePasswordProtection: boolean;
   secureConfigPassword?: string;
   features: DeviceFeatureToggles;
@@ -89,9 +104,9 @@ export interface UsbDeviceConfigRequest {
 export interface UsbDeviceConfigPayload {
   deviceId: string;
   deviceKind: "tag" | "scanner";
-  wifi: {
-    ssid: string;
-    password: string;
+  ble: {
+    enabled: boolean;
+    txPowerDbm?: number;
   };
   security: {
     enabled: boolean;
@@ -99,6 +114,18 @@ export interface UsbDeviceConfigPayload {
   };
   features: DeviceFeatureToggles;
   ts: number;
+}
+
+export interface BleProvisioningPayload {
+  action: "apply_config" | "factory_reset" | "request_status";
+  ts: number;
+  payload?: {
+    deviceId: string;
+    deviceKind: "tag" | "scanner";
+    bleEnabled: boolean;
+    bleTxPowerDbm?: number;
+    features: DeviceFeatureToggles;
+  };
 }
 
 export interface UsbConfigCommandBundle {

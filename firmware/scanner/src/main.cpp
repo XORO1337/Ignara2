@@ -1,142 +1,144 @@
 #include <Arduino.h>
-#include <WiFi.h>
-#include <PubSubClient.h>
+#include <BLEDevice.h>
 
 #ifndef DEVICE_KIND
 #define DEVICE_KIND "scanner"
 #endif
 
-#ifndef MQTT_TOPIC_LOC
-#define MQTT_TOPIC_LOC "ignara/location/room-A3"
+#ifndef BLE_SERVICE_UUID
+#define BLE_SERVICE_UUID "8f240001-6f8d-4f13-a42a-8434f84f0001"
 #endif
 
-#ifndef WIFI_SSID
-#define WIFI_SSID "CHANGE_ME_WIFI_SSID"
-#endif
-
-#ifndef WIFI_PASSWORD
-#define WIFI_PASSWORD "CHANGE_ME_WIFI_PASSWORD"
-#endif
-
-#ifndef MQTT_HOST
-#define MQTT_HOST "192.168.1.10"
-#endif
-
-#ifndef MQTT_PORT
-#define MQTT_PORT 1883
+#ifndef BLE_STATUS_CHAR_UUID
+#define BLE_STATUS_CHAR_UUID "8f240002-6f8d-4f13-a42a-8434f84f0001"
 #endif
 
 namespace {
 const char* kScannerId = "scanner-01";
-const char* kEmployeeId = "employee-1";
+const char* kEmployeeId = "employee@ignara.local";
 const char* kRoomId = "room-A3";
 const char* kOrgId = "default-org";
 
-const unsigned long kScanIntervalMs = 1000;
-const unsigned long kReconnectIntervalMs = 5000;
+const unsigned long kScanIntervalMs = 2000;
 const int kEnterThreshold = -68;
 const int kExitThreshold = -74;
+const int kSignalLossExitScans = 3;
+const uint32_t kBleScanDurationSeconds = 1;
 
 unsigned long lastScanAt = 0;
-unsigned long lastReconnectAt = 0;
-int simulatedRssi = -85;
 bool occupantPresent = false;
+int missedBeaconScans = 0;
+String activeBeaconId;
 
-WiFiClient wifiClient;
-PubSubClient mqttClient(wifiClient);
-bool mqttEnabled = true;
+BLEScan* bleScan = nullptr;
 
-void connectWiFi() {
-  if (WiFi.status() == WL_CONNECTED) {
-    return;
+struct BeaconSample {
+  bool found;
+  String beaconId;
+  int rssi;
+};
+
+float computeProximityScore(int rssi) {
+  const float normalized = static_cast<float>(rssi + 100) / 45.0f;
+  if (normalized < 0.0f) {
+    return 0.0f;
   }
-
-  Serial.print("[WIFI] connecting to ");
-  Serial.println(WIFI_SSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  if (normalized > 1.0f) {
+    return 1.0f;
+  }
+  return normalized;
 }
 
-void connectMqtt() {
-  if (WiFi.status() != WL_CONNECTED || mqttClient.connected() || !mqttEnabled) {
-    return;
+bool hasIgnaraService(const BLEAdvertisedDevice& device) {
+  if (!device.haveServiceUUID()) {
+    return false;
   }
 
-  char clientId[64];
-  snprintf(clientId, sizeof(clientId), "ignara-scanner-%lu", millis());
-
-  Serial.print("[MQTT] connecting to ");
-  Serial.print(MQTT_HOST);
-  Serial.print(":");
-  Serial.println(MQTT_PORT);
-
-  if (mqttClient.connect(clientId)) {
-    Serial.println("[MQTT] connected");
-    return;
-  }
-
-  Serial.print("[MQTT] connect failed rc=");
-  Serial.println(mqttClient.state());
+  BLEUUID expected(BLE_SERVICE_UUID);
+  return device.isAdvertisingService(expected);
 }
 
-void ensureConnectivity() {
-  const unsigned long now = millis();
-  if (now - lastReconnectAt < kReconnectIntervalMs) {
-    return;
+String resolveBeaconId(const BLEAdvertisedDevice& device) {
+  if (device.haveServiceData()) {
+    std::string serviceData = device.getServiceData();
+    if (!serviceData.empty()) {
+      return String(serviceData.c_str());
+    }
   }
-  lastReconnectAt = now;
 
-  connectWiFi();
-  connectMqtt();
+  if (device.haveName() && device.getName().length() > 0) {
+    return String(device.getName().c_str());
+  }
+
+  return String(device.getAddress().toString().c_str());
 }
 
-int nextRssiSample() {
-  const unsigned long t = millis() / 1000;
-
-  // 30-second cycle: approach desk, stay nearby, then walk away.
-  if (t % 30 < 8) {
-    simulatedRssi += 3;
-  } else if (t % 30 < 18) {
-    simulatedRssi += (random(-1, 2));
-  } else {
-    simulatedRssi -= 3;
-  }
-
-  if (simulatedRssi > -55) {
-    simulatedRssi = -55;
-  }
-  if (simulatedRssi < -92) {
-    simulatedRssi = -92;
-  }
-
-  return simulatedRssi;
+void initializeBleScan() {
+  BLEDevice::init("");
+  bleScan = BLEDevice::getScan();
+  bleScan->setActiveScan(true);
+  bleScan->setInterval(160);
+  bleScan->setWindow(99);
 }
 
-void publishLocationEvent(const char* eventName, int rssi) {
+BeaconSample scanStrongestBeacon() {
+  if (bleScan == nullptr) {
+    return {false, "", -100};
+  }
+
+  BLEScanResults results = bleScan->start(kBleScanDurationSeconds, false);
+  int bestRssi = -127;
+  String bestBeaconId = "";
+
+  for (int i = 0; i < results.getCount(); i += 1) {
+    BLEAdvertisedDevice device = results.getDevice(i);
+    if (!hasIgnaraService(device)) {
+      continue;
+    }
+
+    const int rssi = device.getRSSI();
+    if (rssi <= bestRssi) {
+      continue;
+    }
+
+    const String beaconId = resolveBeaconId(device);
+    if (beaconId.length() == 0) {
+      continue;
+    }
+
+    bestRssi = rssi;
+    bestBeaconId = beaconId;
+  }
+
+  bleScan->clearResults();
+  if (bestBeaconId.length() == 0) {
+    return {false, "", -100};
+  }
+
+  return {true, bestBeaconId, bestRssi};
+}
+
+void emitLocationEvent(const char* eventName, const String& beaconId, int rssi) {
   const unsigned long ts = millis();
-  char payload[320];
+  const float proximityScore = computeProximityScore(rssi);
+  char payload[512];
 
   snprintf(
     payload,
     sizeof(payload),
-    "{\"employeeId\":\"%s\",\"scannerId\":\"%s\",\"roomId\":\"%s\",\"rssi\":%d,\"event\":\"%s\",\"orgId\":\"%s\",\"ts\":%lu}",
+    "{\"employeeId\":\"%s\",\"scannerId\":\"%s\",\"roomId\":\"%s\",\"rssi\":%d,\"event\":\"%s\",\"beaconId\":\"%s\",\"beaconRssi\":%d,\"sourceType\":\"ble\",\"proximityScore\":%.2f,\"orgId\":\"%s\",\"ts\":%lu}",
     kEmployeeId,
     kScannerId,
     kRoomId,
     rssi,
     eventName,
+    beaconId.c_str(),
+    rssi,
+    proximityScore,
     kOrgId,
     ts);
 
-  if (mqttClient.connected()) {
-    const ok = mqttClient.publish(MQTT_TOPIC_LOC, payload);
-    if (!ok) {
-      Serial.println("[MQTT] publish failed");
-    }
-  }
-
-  Serial.print("[MQTT:LOC] topic=");
-  Serial.println(MQTT_TOPIC_LOC);
+  Serial.println("[BLE:LOC]");
   Serial.println(payload);
 }
 }  // namespace
@@ -144,16 +146,12 @@ void publishLocationEvent(const char* eventName, int rssi) {
 void setup() {
   Serial.begin(115200);
   delay(500);
-  randomSeed(static_cast<unsigned long>(micros()));
-  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-
-  if (String(WIFI_SSID).startsWith("CHANGE_ME_")) {
-    mqttEnabled = false;
-    Serial.println("[CONFIG] WiFi/MQTT disabled. Set WIFI_SSID/WIFI_PASSWORD build flags.");
-  }
+  initializeBleScan();
 
   Serial.println("Ignara SCANNER firmware");
-  Serial.println("Mode: simulated BLE scan + enter/exit publish over MQTT");
+  Serial.println("Mode: BLE-only scan + enter/exit serial event stream");
+  Serial.print("Service filter: ");
+  Serial.println(BLE_SERVICE_UUID);
   Serial.print("Thresholds: enter >= ");
   Serial.print(kEnterThreshold);
   Serial.print(" dBm, exit <= ");
@@ -162,9 +160,6 @@ void setup() {
 }
 
 void loop() {
-  ensureConnectivity();
-  mqttClient.loop();
-
   const unsigned long now = millis();
   if (now - lastScanAt < kScanIntervalMs) {
     delay(20);
@@ -172,17 +167,44 @@ void loop() {
   }
   lastScanAt = now;
 
-  const int rssi = nextRssiSample();
-  Serial.print("[SCAN] employee=");
-  Serial.print(kEmployeeId);
-  Serial.print(" rssi=");
-  Serial.println(rssi);
+  const BeaconSample sample = scanStrongestBeacon();
+  if (!sample.found) {
+    Serial.println("[BLE] no matching Ignara beacon detected");
+    if (occupantPresent) {
+      missedBeaconScans += 1;
+      if (missedBeaconScans >= kSignalLossExitScans) {
+        occupantPresent = false;
+        emitLocationEvent("exit", activeBeaconId, -100);
+        activeBeaconId = "";
+        missedBeaconScans = 0;
+      }
+    }
+    return;
+  }
 
-  if (!occupantPresent && rssi >= kEnterThreshold) {
+  missedBeaconScans = 0;
+
+  Serial.print("[BLE] strongest beacon=");
+  Serial.print(sample.beaconId);
+  Serial.print(" rssi=");
+  Serial.println(sample.rssi);
+
+  if (!occupantPresent && sample.rssi >= kEnterThreshold) {
     occupantPresent = true;
-    publishLocationEvent("enter", rssi);
-  } else if (occupantPresent && rssi <= kExitThreshold) {
+    activeBeaconId = sample.beaconId;
+    emitLocationEvent("enter", sample.beaconId, sample.rssi);
+    return;
+  }
+
+  if (occupantPresent && sample.rssi <= kExitThreshold) {
     occupantPresent = false;
-    publishLocationEvent("exit", rssi);
+    emitLocationEvent("exit", sample.beaconId, sample.rssi);
+    activeBeaconId = "";
+    return;
+  }
+
+  if (occupantPresent && activeBeaconId != sample.beaconId && sample.rssi >= kEnterThreshold) {
+    activeBeaconId = sample.beaconId;
+    emitLocationEvent("enter", sample.beaconId, sample.rssi);
   }
 }

@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import type { LastKnownLocation, RoomZone, TagDeviceSummary } from "@ignara/sharedtypes";
+import type { LastKnownLocation, RoomZone, TagDeviceSummary, UserGender } from "@ignara/sharedtypes";
+import type { Socket } from "socket.io-client";
 import { apiRequest } from "../../lib/api";
 import { parseMapEditorData, pickActiveMap, type MapBackgroundConfig, type MapPropElement } from "../../lib/map-config";
-import { locationSocket } from "../../lib/socket";
-import { useAuthStore } from "../../store/auth-store";
+import { createLocationSocket } from "../../lib/socket";
+import { useAuthStore, type SessionUser } from "../../store/auth-store";
 import { useLocationStore } from "../../store/location-store";
 import { AppButton, AppContainer, AppInput, GlassCard, MetricCard, StatusPill } from "../../components/ui";
 
@@ -15,14 +16,15 @@ const LiveMap = dynamic(
   { ssr: false },
 );
 
-type SessionUser = {
-  sub: string;
+type PersistedMap = { id: string; orgId: string; name: string; jsonConfig?: Record<string, unknown> | null };
+type OrgUser = {
+  id: string;
+  orgId: string;
   email: string;
   role: "admin" | "manager" | "employee";
-  orgId: string;
-  isDevAllowlisted?: boolean;
+  gender?: UserGender;
+  tagDeviceId?: string | null;
 };
-type PersistedMap = { id: string; orgId: string; name: string; jsonConfig?: Record<string, unknown> | null };
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
@@ -40,22 +42,29 @@ export default function DashboardPage() {
   const [mapRooms, setMapRooms] = useState<RoomZone[]>([]);
   const [mapProps, setMapProps] = useState<MapPropElement[]>([]);
   const [mapBackground, setMapBackground] = useState<MapBackgroundConfig | null>(null);
+  const [userGenderMap, setUserGenderMap] = useState<Record<string, UserGender>>({});
+  const spawnedPlayerRef = useRef<Record<string, boolean>>({});
 
   const [tags, setTags] = useState<TagDeviceSummary[]>([]);
-  const [wifiForms, setWifiForms] = useState<Record<string, { ssid: string; password: string }>>({});
+  const [tagStatus, setTagStatus] = useState<string | null>(null);
 
   const [newTagDeviceId, setNewTagDeviceId] = useState("");
   const [newTagRoomId, setNewTagRoomId] = useState("");
   const [isAddingTag, setIsAddingTag] = useState(false);
   const [isRefreshingTags, setIsRefreshingTags] = useState(false);
 
-  const [filterQuery, setFilterQuery] = useState("");
-  const [selectedTagIds, setSelectedTagIds] = useState<Record<string, boolean>>({});
-  const [bulkSsid, setBulkSsid] = useState("");
-  const [bulkPassword, setBulkPassword] = useState("");
-  const [isBulkAssigning, setIsBulkAssigning] = useState(false);
-  const [savingDeviceId, setSavingDeviceId] = useState<string | null>(null);
-  const [wifiStatus, setWifiStatus] = useState<string | null>(null);
+  const roomLabelById = useMemo(
+    () => new Map(mapRooms.map((room) => [room.id, room.label])),
+    [mapRooms],
+  );
+
+  function formatRoomLabel(roomId?: string | null) {
+    if (!roomId) {
+      return "unassigned";
+    }
+
+    return roomLabelById.get(roomId) ?? roomId;
+  }
 
   const locations = Object.values(locationsRecord);
   const connectedLocations = locations.filter((location) => location.connected);
@@ -63,38 +72,11 @@ export default function DashboardPage() {
   const activeRoomCount = new Set(connectedLocations.map((location) => location.roomId)).size;
   const unmappedConnectedCount = connectedLocations.filter((location) => !mapRooms.some((room) => room.id === location.roomId)).length;
 
-  const canManageLiveMap = user?.role === "admin" || user?.role === "manager";
-  const canManageWifi = user?.role === "admin" || user?.role === "manager";
-
-  const selectedIds = Object.entries(selectedTagIds)
-    .filter(([, selected]) => selected)
-    .map(([id]) => id);
-
-  const filteredTags = tags.filter((tag) => {
-    const query = filterQuery.trim().toLowerCase();
-    if (!query) {
-      return true;
-    }
-    return tag.id.toLowerCase().includes(query) || (tag.roomId ?? "").toLowerCase().includes(query);
-  });
+  const canManageLiveMap = Boolean(user);
+  const canManageTags = user?.role === "admin" || user?.role === "manager";
 
   function initializeTagForms(tagDevices: TagDeviceSummary[]) {
     setTags(tagDevices);
-    setWifiForms(
-      tagDevices.reduce<Record<string, { ssid: string; password: string }>>((acc, device) => {
-        acc[device.id] = {
-          ssid: device.wifiSsid ?? "",
-          password: "",
-        };
-        return acc;
-      }, {}),
-    );
-    setSelectedTagIds(
-      tagDevices.reduce<Record<string, boolean>>((acc, device) => {
-        acc[device.id] = false;
-        return acc;
-      }, {}),
-    );
   }
 
   async function loadTags() {
@@ -124,6 +106,7 @@ export default function DashboardPage() {
   useEffect(() => {
     let active = true;
     let orgId = "";
+    let locationSocket: Socket | null = null;
 
     const bootstrap = async () => {
       try {
@@ -144,28 +127,42 @@ export default function DashboardPage() {
         orgId = sessionUser.orgId;
         const managerView = sessionUser.role === "admin" || sessionUser.role === "manager";
 
-        const [current, tagDevices, maps] = await Promise.all([
+        const [current, tagDevices, maps, users] = await Promise.all([
           apiRequest<LastKnownLocation[]>("/locations/current"),
           managerView ? apiRequest<TagDeviceSummary[]>("/devices/tags") : Promise.resolve([]),
-          managerView ? apiRequest<PersistedMap[]>("/maps") : Promise.resolve([]),
+          apiRequest<PersistedMap[]>("/maps"),
+          apiRequest<OrgUser[]>("/users"),
         ]);
 
         if (active) {
           setLocations(current);
           initializeTagForms(tagDevices);
           hydrateMapFromList(maps);
+          setUserGenderMap(
+            users.reduce<Record<string, UserGender>>((acc, entry) => {
+              acc[entry.email] = entry.gender ?? "other";
+              return acc;
+            }, {}),
+          );
           setBootstrapError(null);
 
           setSocketState("connecting");
-          locationSocket.on("connect", () => {
-            locationSocket.emit("join", { room: `org:${orgId}:locations` });
+          const socket = await createLocationSocket();
+          if (!active) {
+            socket.disconnect();
+            return;
+          }
+
+          locationSocket = socket;
+          socket.on("connect", () => {
+            socket.emit("join", { room: `org:${orgId}:locations` });
             setSocketState("connected");
           });
-          locationSocket.on("disconnect", () => {
+          socket.on("disconnect", () => {
             setSocketState("disconnected");
           });
-          locationSocket.connect();
-          locationSocket.on("location:update", upsertLocation);
+          socket.connect();
+          socket.on("location:update", upsertLocation);
         }
       } catch (error) {
         if (active) {
@@ -184,16 +181,62 @@ export default function DashboardPage() {
 
     return () => {
       active = false;
-      locationSocket.off("connect");
-      locationSocket.off("disconnect");
-      locationSocket.off("location:update", upsertLocation);
-      locationSocket.disconnect();
+      if (locationSocket) {
+        locationSocket.off("connect");
+        locationSocket.off("disconnect");
+        locationSocket.off("location:update", upsertLocation);
+        locationSocket.disconnect();
+      }
     };
   }, [setLocations, setUser, upsertLocation, user]);
 
+  useEffect(() => {
+    if (!user || mapRooms.length === 0) {
+      return;
+    }
+
+    if (locationsRecord[user.email] || spawnedPlayerRef.current[user.email]) {
+      return;
+    }
+
+    const defaultRoom = mapRooms[0];
+    if (!defaultRoom) {
+      return;
+    }
+
+    spawnedPlayerRef.current[user.email] = true;
+    const defaultX = Math.round(defaultRoom.x + defaultRoom.w / 2);
+    const defaultY = Math.round(defaultRoom.y + defaultRoom.h / 2);
+
+    void apiRequest<LastKnownLocation>("/locations/move", {
+      method: "POST",
+      body: JSON.stringify({
+        roomId: defaultRoom.id,
+        x: defaultX,
+        y: defaultY,
+      }),
+    })
+      .then((location) => upsertLocation(location))
+      .catch(() => {
+        spawnedPlayerRef.current[user.email] = false;
+      });
+  }, [locationsRecord, mapRooms, upsertLocation, user]);
+
+  const moveCurrentPlayer = useCallback(async (payload: { roomId?: string; x: number; y: number }) => {
+    try {
+      const updated = await apiRequest<LastKnownLocation>("/locations/move", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      upsertLocation(updated);
+    } catch {
+      // Keep local movement smooth even when transient API calls fail.
+    }
+  }, [upsertLocation]);
+
   async function registerTag() {
     if (!newTagDeviceId.trim()) {
-      setWifiStatus("Device ID is required to register a tag.");
+      setTagStatus("Device ID is required to register a tag.");
       return;
     }
 
@@ -208,19 +251,11 @@ export default function DashboardPage() {
       });
 
       setTags((prev) => [...prev, created].sort((a, b) => a.id.localeCompare(b.id)));
-      setWifiForms((prev) => ({
-        ...prev,
-        [created.id]: {
-          ssid: "",
-          password: "",
-        },
-      }));
-      setSelectedTagIds((prev) => ({ ...prev, [created.id]: false }));
       setNewTagDeviceId("");
       setNewTagRoomId("");
-      setWifiStatus(`Registered ${created.id}. You can now assign WiFi credentials.`);
+      setTagStatus(`Registered ${created.id}.`);
     } catch {
-      setWifiStatus("Failed to register tag. Ensure deviceId is unique and you are logged in as manager/admin.");
+      setTagStatus("Failed to register tag. Ensure deviceId is unique and you are logged in as manager/admin.");
     } finally {
       setIsAddingTag(false);
     }
@@ -230,87 +265,11 @@ export default function DashboardPage() {
     try {
       setIsRefreshingTags(true);
       await loadTags();
-      setWifiStatus("Tag list refreshed.");
+      setTagStatus("Tag list refreshed.");
     } catch {
-      setWifiStatus("Could not refresh tags from API.");
+      setTagStatus("Could not refresh tags from API.");
     } finally {
       setIsRefreshingTags(false);
-    }
-  }
-
-  async function applyBulkWifi() {
-    const ssid = bulkSsid.trim();
-    const password = bulkPassword.trim();
-
-    if (!ssid || !password) {
-      setWifiStatus("Bulk assignment requires SSID and password.");
-      return;
-    }
-
-    if (selectedIds.length === 0) {
-      setWifiStatus("Select at least one tag for bulk assignment.");
-      return;
-    }
-
-    try {
-      setIsBulkAssigning(true);
-      const results = await Promise.all(
-        selectedIds.map((deviceId) =>
-          apiRequest<TagDeviceSummary>(`/devices/tags/${deviceId}/wifi`, {
-            method: "PUT",
-            body: JSON.stringify({ ssid, password }),
-          }),
-        ),
-      );
-
-      const updatedById = new Map(results.map((entry) => [entry.id, entry]));
-      setTags((prev) => prev.map((entry) => updatedById.get(entry.id) ?? entry));
-      setWifiForms((prev) => {
-        const next = { ...prev };
-        for (const deviceId of selectedIds) {
-          next[deviceId] = {
-            ssid,
-            password: "",
-          };
-        }
-        return next;
-      });
-      setBulkPassword("");
-      setWifiStatus(`Bulk WiFi assignment sent to ${selectedIds.length} tag(s).`);
-    } catch {
-      setWifiStatus("Bulk assignment failed. Verify API and MQTT connectivity.");
-    } finally {
-      setIsBulkAssigning(false);
-    }
-  }
-
-  async function saveTagWifi(deviceId: string) {
-    const form = wifiForms[deviceId];
-    if (!form?.ssid?.trim() || !form?.password?.trim()) {
-      setWifiStatus("SSID and password are required for assignment.");
-      return;
-    }
-
-    try {
-      setSavingDeviceId(deviceId);
-      const updated = await apiRequest<TagDeviceSummary>(`/devices/tags/${deviceId}/wifi`, {
-        method: "PUT",
-        body: JSON.stringify({ ssid: form.ssid, password: form.password }),
-      });
-
-      setTags((prev) => prev.map((entry) => (entry.id === deviceId ? updated : entry)));
-      setWifiForms((prev) => ({
-        ...prev,
-        [deviceId]: {
-          ssid: updated.wifiSsid ?? form.ssid,
-          password: "",
-        },
-      }));
-      setWifiStatus(`WiFi assigned for ${deviceId}. Configuration command published.`);
-    } catch {
-      setWifiStatus("Failed to assign WiFi credentials. Check API and MQTT connectivity.");
-    } finally {
-      setSavingDeviceId(null);
     }
   }
 
@@ -364,11 +323,14 @@ export default function DashboardPage() {
             ) : null}
             <LiveMap
               rooms={mapRooms}
-              locations={connectedLocations}
+              locations={locations}
               mapProps={mapProps}
               background={mapBackground}
               interactive={canManageLiveMap}
               mapStorageKey={activeMapId && user ? `${user.orgId}:${activeMapId}` : null}
+              currentPlayerId={user?.email ?? null}
+              genderByEmployee={userGenderMap}
+              onMovePlayer={user ? moveCurrentPlayer : undefined}
             />
           </GlassCard>
 
@@ -379,7 +341,7 @@ export default function DashboardPage() {
                 {disconnectedLocations.map((location) => (
                   <div key={location.employeeId} className="rounded-xl border border-outline/60 bg-panel-strong/50 p-3 text-sm">
                     <p className="font-semibold">{location.employeeId}</p>
-                    <p className="mt-1 text-xs text-text-dim">Last known room: {location.roomId}</p>
+                    <p className="mt-1 text-xs text-text-dim">Last known room: {formatRoomLabel(location.roomId)}</p>
                     <p className="mt-1 text-xs text-text-dim">Last seen: {new Date(location.ts).toLocaleString()}</p>
                   </div>
                 ))}
@@ -390,22 +352,16 @@ export default function DashboardPage() {
         <GlassCard className="space-y-4" variant="soft">
           <div>
             <p className="font-data text-xs uppercase tracking-[0.18em] text-text-dim">Operations</p>
-            <h2 className="mt-1 text-xl font-semibold">Device Network Operations</h2>
+            <h2 className="mt-1 text-xl font-semibold">Device BLE Operations</h2>
             <p className="mt-1 text-sm text-text-dim">Use the notifications page for targeted and broadcast messages.</p>
           </div>
 
-          {canManageWifi ? (
+          {canManageTags ? (
             <div className="border-t border-outline/70 pt-4">
-              <h3 className="text-base font-semibold">Tag WiFi Assignment</h3>
-              <p className="mt-1 text-xs text-text-dim">Assign SSID/password per tag. Device receives config over MQTT.</p>
+              <h3 className="text-base font-semibold">Tag Management</h3>
+              <p className="mt-1 text-xs text-text-dim">Register tags and review BLE provisioning state.</p>
 
               <div className="mt-3 flex gap-2">
-                <AppInput
-                  className="py-1.5"
-                  placeholder="Search tag id or room"
-                  value={filterQuery}
-                  onChange={(event) => setFilterQuery(event.target.value)}
-                />
                 <AppButton
                   type="button"
                   variant="secondary"
@@ -415,37 +371,6 @@ export default function DashboardPage() {
                   disabled={isRefreshingTags}
                 >
                   Refresh
-                </AppButton>
-              </div>
-
-              <div className="mt-3 rounded-xl border border-outline/70 bg-panel-strong/60 p-3">
-                <p className="font-data text-xs font-semibold uppercase tracking-[0.12em] text-text-dim">Bulk WiFi Assignment</p>
-                <p className="mt-1 text-xs text-text-dim">Selected tags: {selectedIds.length}</p>
-
-                <label className="mt-2 block text-xs text-text-dim">SSID</label>
-                <AppInput
-                  className="mt-1 py-1.5"
-                  value={bulkSsid}
-                  onChange={(event) => setBulkSsid(event.target.value)}
-                />
-
-                <label className="mt-2 block text-xs text-text-dim">Password</label>
-                <AppInput
-                  type="password"
-                  className="mt-1 py-1.5"
-                  value={bulkPassword}
-                  onChange={(event) => setBulkPassword(event.target.value)}
-                />
-
-                <AppButton
-                  type="button"
-                  className="mt-3"
-                  size="sm"
-                  onClick={() => void applyBulkWifi()}
-                  loading={isBulkAssigning}
-                  disabled={isBulkAssigning}
-                >
-                  Apply To Selected
                 </AppButton>
               </div>
 
@@ -481,76 +406,21 @@ export default function DashboardPage() {
               </div>
 
               <div className="mt-3 max-h-[32rem] space-y-3 overflow-auto pr-1">
-                {filteredTags.map((tag) => (
+                {tags.map((tag) => (
                   <div key={tag.id} className="rounded-xl border border-outline/70 bg-panel-strong/50 p-3">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 rounded border-outline bg-panel-strong text-accent"
-                        checked={selectedTagIds[tag.id] ?? false}
-                        onChange={(event) =>
-                          setSelectedTagIds((prev) => ({
-                            ...prev,
-                            [tag.id]: event.target.checked,
-                          }))
-                        }
-                      />
-                      <p className="font-data text-sm font-semibold">{tag.id}</p>
-                    </label>
-                    <p className="mt-1 text-xs text-text-dim">Room: {tag.roomId ?? "unassigned"}</p>
-                    <p className="mt-1 text-xs text-text-dim">Last WiFi update: {tag.wifiUpdatedAt ?? "never"}</p>
-
-                    <label className="mt-2 block text-xs text-text-dim">SSID</label>
-                    <AppInput
-                      className="mt-1 py-1.5"
-                      value={wifiForms[tag.id]?.ssid ?? ""}
-                      onChange={(event) =>
-                        setWifiForms((prev) => ({
-                          ...prev,
-                          [tag.id]: {
-                            ...(prev[tag.id] ?? { ssid: "", password: "" }),
-                            ssid: event.target.value,
-                          },
-                        }))
-                      }
-                    />
-
-                    <label className="mt-2 block text-xs text-text-dim">Password</label>
-                    <AppInput
-                      type="password"
-                      className="mt-1 py-1.5"
-                      value={wifiForms[tag.id]?.password ?? ""}
-                      onChange={(event) =>
-                        setWifiForms((prev) => ({
-                          ...prev,
-                          [tag.id]: {
-                            ...(prev[tag.id] ?? { ssid: "", password: "" }),
-                            password: event.target.value,
-                          },
-                        }))
-                      }
-                    />
-
-                    <AppButton
-                      type="button"
-                      className="mt-3"
-                      size="sm"
-                      onClick={() => void saveTagWifi(tag.id)}
-                      loading={savingDeviceId === tag.id}
-                      disabled={savingDeviceId === tag.id}
-                    >
-                      Assign WiFi
-                    </AppButton>
+                    <p className="font-data text-sm font-semibold">{tag.id}</p>
+                    <p className="mt-1 text-xs text-text-dim">Room: {formatRoomLabel(tag.roomId)}</p>
+                    <p className="mt-1 text-xs text-text-dim">Last BLE provisioning: {tag.bleProvisionedAt ?? "never"}</p>
                   </div>
                 ))}
-                {filteredTags.length === 0 ? <p className="text-xs text-text-dim">No tags match your search.</p> : null}
+                {tags.length === 0 ? <p className="text-xs text-text-dim">No tags registered yet.</p> : null}
               </div>
 
-              {wifiStatus ? <p className="mt-3 text-xs text-text-dim">{wifiStatus}</p> : null}
+              {tagStatus ? <p className="mt-3 text-xs text-text-dim">{tagStatus}</p> : null}
             </div>
           ) : (
             <div className="rounded-xl border border-outline/70 bg-panel-strong/45 p-3 text-sm text-text-dim">
-              WiFi assignment controls are available to admin and manager roles.
+              Tag management controls are available to admin and manager roles.
             </div>
           )}
         </GlassCard>

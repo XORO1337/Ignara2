@@ -1,34 +1,62 @@
 # Firmware Structure
 
-- `tag`: Employee ID/tag firmware (BLE beacon + MQTT notifications + OLED rendering).
-- `scanner`: Room scanner firmware (BLE scanning + MQTT enter/exit publish).
+- `tag`: Employee tag firmware (BLE peripheral with status + provisioning characteristics and serial OLED stub).
+- `scanner`: Room scanner firmware (BLE central scanner with service filter and serial enter/exit event stream).
 
 Current implementation status:
 
-- Both firmware targets now publish MQTT payloads when WiFi/MQTT build flags are configured.
-- `tag` emits status-beacon JSON every 5 seconds and OLED-equivalent frame text every 1 second.
-- `scanner` emits contract-compatible `ScannerLocationEvent` JSON with enter/exit transitions using RSSI hysteresis.
-- Serial output mirrors every published payload for quick debugging.
+- Both firmware targets are BLE-only and contain no WiFi runtime paths.
+- `tag` exposes GATT service + characteristics for status and provisioning updates.
+- `scanner` filters scans to the Ignara BLE service UUID and emits enter/exit events with RSSI hysteresis.
+- Serial output mirrors status/events for quick debugging and gateway integration.
 
-## MQTT contracts
-- Location topic: `ignara/location/{roomId}`
-- Targeted notifications: `ignara/notifications/{empId}`
-- Broadcast notifications: `ignara/notifications/broadcast`
-- Device status: `ignara/status/{deviceId}`
-- Device config: `ignara/config/{deviceId}`
+## BLE contract
 
-## Next Step to Reach Hardware MVP
+- Service UUID: `8f240001-6f8d-4f13-a42a-8434f84f0001`
+- Tag status characteristic: `8f240002-6f8d-4f13-a42a-8434f84f0001` (read/notify)
+- Tag provisioning characteristic: `8f240003-6f8d-4f13-a42a-8434f84f0001` (write/notify)
 
-1. Replace scanner RSSI simulator with BLE scan results.
-2. Replace tag OLED serial renderer with real OLED library draw calls.
+Status payload shape:
+
+```json
+{
+	"deviceId": "tag-001",
+	"deviceKind": "tag",
+	"employeeId": "employee-1",
+	"status": "online",
+	"uptimeMs": 12345,
+	"bleEnabled": true,
+	"bleTxPowerDbm": -8,
+	"features": {
+		"locationTracking": true,
+		"notifications": true,
+		"scannerPresence": true,
+		"debugMode": false
+	},
+	"ts": 12345
+}
+```
+
+Provisioning write payload keys currently consumed by firmware:
+
+- `deviceId`
+- `bleEnabled`
+- `bleTxPowerDbm`
+- `locationTracking`
+- `notifications`
+- `scannerPresence`
+- `debugMode`
+
+## Next Step to Reach Full Platform Flow
+
+1. Add/enable BLE gateway on backend side to ingest scanner serial/BLE event stream.
+2. Replace tag OLED serial renderer with real OLED draw calls if physical display is connected.
 
 ## Firmware Build Flags
 
 Set these per target in `platformio.ini`:
 
-- `WIFI_SSID`
-- `WIFI_PASSWORD`
-- `MQTT_HOST`
-- `MQTT_PORT`
-
-If `WIFI_SSID` is left as `CHANGE_ME_WIFI_SSID`, firmware stays in serial-only mode and skips MQTT connection attempts.
+- `BLE_SERVICE_UUID`
+- `BLE_STATUS_CHAR_UUID`
+- `BLE_PROVISION_CHAR_UUID` (tag only)
+- `TAG_DEVICE_ID` and `TAG_EMPLOYEE_ID` (tag only)

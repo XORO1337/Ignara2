@@ -1,4 +1,4 @@
-import type { Role } from "@ignara/sharedtypes";
+import type { Role, UserGender } from "@ignara/sharedtypes";
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from "typeorm";
 import { OrganizationEntity } from "./organization.entity";
 
@@ -19,6 +19,9 @@ export class UserEntity {
 
   @Column({ type: "varchar", length: 16 })
   role!: Role;
+
+  @Column({ type: "varchar", length: 16, default: "other" })
+  gender!: UserGender;
 
   @Column({ type: "text" })
   password!: string;

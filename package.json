@@ -7,11 +7,12 @@
     "node": ">=20.11.0"
   },
   "scripts": {
-    "dev": "turbo dev --parallel",
+    "dev": "node scripts/dev-with-ports.cjs",
+    "dev:fixed": "turbo dev --parallel",
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
-    "infra:up": "docker compose up -d postgres redis mosquitto",
+    "infra:up": "node scripts/infra-up-with-ports.cjs",
     "infra:down": "docker compose down",
     "db:setup": "pnpm --filter @ignara/api migration:run && pnpm --filter @ignara/api seed"
   },

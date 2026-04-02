@@ -1,19 +1,55 @@
-const DEFAULT_ALLOWED_ORIGIN_PATTERNS = [
-  /^https?:\/\/localhost(?::\d+)?$/i,
-  /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i,
-  /^https:\/\/.+-3000\..+$/i,
-];
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function getConfiguredWebPort(): string {
+  return process.env.WEB_PORT?.trim() || process.env.NEXT_PUBLIC_WEB_PORT?.trim() || "3000";
+}
+
+function getDefaultAllowedOriginPatterns(): RegExp[] {
+  const webPort = escapeRegExp(getConfiguredWebPort());
+
+  return [
+    /^https?:\/\/localhost(?::\d+)?$/i,
+    /^https?:\/\/127\.0\.0\.1(?::\d+)?$/i,
+    new RegExp(`^https:\\/\\/.+-${webPort}\\..+$`, "i"),
+    /^https:\/\/.+-\d+\..+$/i,
+  ];
+}
 
 function normalizeOrigin(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
 
-function getConfiguredCorsOrigins(): string[] {
-  return (process.env.CORS_ORIGIN ?? "")
+function parseOriginList(value: string | undefined): string[] {
+  return (value ?? "")
     .split(",")
     .map((origin) => origin.trim())
     .map((origin) => normalizeOrigin(origin))
     .filter(Boolean);
+}
+
+function getConfiguredCorsOrigins(): string[] {
+  return parseOriginList(process.env.CORS_ORIGIN);
+}
+
+function getCodespacesForwardedOrigins(): string[] {
+  const explicitOrigins = parseOriginList(process.env.CODESPACES_HOST_FORWARDED_ORIGIN);
+
+  const codespaceName = process.env.CODESPACE_NAME?.trim();
+  const forwardingDomain = process.env.GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN?.trim() || "app.github.dev";
+  const webPort = getConfiguredWebPort();
+
+  if (!codespaceName) {
+    return explicitOrigins;
+  }
+
+  const derivedOrigin = normalizeOrigin(`https://${codespaceName}-${webPort}.${forwardingDomain}`);
+  if (explicitOrigins.includes(derivedOrigin)) {
+    return explicitOrigins;
+  }
+
+  return [...explicitOrigins, derivedOrigin];
 }
 
 export function isAllowedCorsOrigin(origin: string | undefined): boolean {
@@ -32,7 +68,12 @@ export function isAllowedCorsOrigin(origin: string | undefined): boolean {
     return true;
   }
 
-  return DEFAULT_ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(normalizedOrigin));
+  const codespacesForwardedOrigins = getCodespacesForwardedOrigins();
+  if (codespacesForwardedOrigins.includes(normalizedOrigin)) {
+    return true;
+  }
+
+  return getDefaultAllowedOriginPatterns().some((pattern) => pattern.test(normalizedOrigin));
 }
 
 export function validateCorsOrigin(

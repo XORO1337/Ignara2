@@ -25,7 +25,7 @@ export class UsersService {
   async listByOrg(orgId: string) {
     return this.usersRepository
       .createQueryBuilder("user")
-      .select(["user.id", "user.orgId", "user.email", "user.role", "user.tagDeviceId"])
+      .select(["user.id", "user.orgId", "user.email", "user.role", "user.gender", "user.tagDeviceId"])
       .where("user.orgId = :orgId", { orgId })
       .orderBy("user.email", "ASC")
       .getMany();

@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "node ../../scripts/next-with-port.cjs dev",
     "build": "next build",
-    "start": "next start -p 3000",
+    "start": "node ../../scripts/next-with-port.cjs start",
     "lint": "next lint",
     "test": "echo 'No tests configured for web'"
   },

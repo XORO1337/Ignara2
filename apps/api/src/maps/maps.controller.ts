@@ -36,7 +36,6 @@ export class MapsController {
 
   @Get()
   list(@Req() request: Request & { user?: SessionUser }) {
-    this.assertAdminOrDev(request);
     return this.mapsService.listByOrg(this.getOrgId(request));
   }
 
@@ -45,7 +44,6 @@ export class MapsController {
     @Req() request: Request & { user?: SessionUser },
     @Param("id") id: string,
   ) {
-    this.assertAdminOrDev(request);
     return this.mapsService.getById(this.getOrgId(request), id);
   }
 

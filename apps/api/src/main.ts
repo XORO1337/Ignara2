@@ -1,8 +1,45 @@
 import { NestFactory } from "@nestjs/core";
+import type { INestApplication } from "@nestjs/common";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 import { validateCorsOrigin } from "./common/cors-origin";
 import { LocationsGateway } from "./locations/locations.gateway";
+
+function getErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+
+  if (!("code" in error)) {
+    return undefined;
+  }
+
+  const maybeCode = (error as { code?: unknown }).code;
+  return typeof maybeCode === "string" ? maybeCode : undefined;
+}
+
+async function listenWithPortFallback(
+  app: INestApplication,
+  preferredPort: number,
+  maxAttempts = 50,
+): Promise<number> {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const candidatePort = preferredPort + attempt;
+
+    try {
+      await app.listen(candidatePort);
+      return candidatePort;
+    } catch (error) {
+      if (getErrorCode(error) !== "EADDRINUSE") {
+        throw error;
+      }
+
+      console.warn(`[bootstrap] Port ${candidatePort} is busy, trying ${candidatePort + 1}`);
+    }
+  }
+
+  throw new Error(`Could not bind API after ${maxAttempts} attempts from port ${preferredPort}`);
+}
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -16,8 +53,13 @@ async function bootstrap() {
   const locationsGateway = app.get(LocationsGateway);
   locationsGateway.initialize(app.getHttpServer());
 
-  const port = Number(process.env.PORT ?? 3001);
-  await app.listen(port);
+  const preferredPort = Number(process.env.PORT ?? 3001);
+  const boundPort = await listenWithPortFallback(app, preferredPort);
+
+  process.env.PORT = String(boundPort);
+  if (boundPort !== preferredPort) {
+    console.info(`[bootstrap] API bound to fallback port ${boundPort}`);
+  }
 }
 
 bootstrap();

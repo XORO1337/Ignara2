@@ -10,15 +10,7 @@ import type {
 } from "@ignara/sharedtypes";
 import { AppButton, AppContainer, AppInput, AppTextArea, GlassCard, StatusPill } from "../../components/ui";
 import { apiRequest } from "../../lib/api";
-import { useAuthStore } from "../../store/auth-store";
-
-type SessionUser = {
-  sub: string;
-  email: string;
-  role: "admin" | "manager" | "employee";
-  orgId: string;
-  isDevAllowlisted?: boolean;
-};
+import { useAuthStore, type SessionUser } from "../../store/auth-store";
 
 type UsbTargetsResponse = {
   tags: TagDeviceSummary[];
@@ -42,8 +34,6 @@ export default function DeviceConfigPage() {
 
   const [deviceKind, setDeviceKind] = useState<"tag" | "scanner">("tag");
   const [deviceId, setDeviceId] = useState("");
-  const [wifiSsid, setWifiSsid] = useState("");
-  const [wifiPassword, setWifiPassword] = useState("");
 
   const [enablePasswordProtection, setEnablePasswordProtection] = useState(true);
   const [secureConfigPassword, setSecureConfigPassword] = useState("");
@@ -109,16 +99,15 @@ export default function DeviceConfigPage() {
   }, [activeDeviceOptions, deviceId]);
 
   async function generateCommands() {
-    if (!deviceId.trim() || !wifiSsid.trim() || !wifiPassword.trim()) {
-      setStatus("Device, WiFi SSID, and WiFi password are required.");
+    if (!deviceId.trim()) {
+      setStatus("Device is required.");
       return;
     }
 
     const requestBody: UsbDeviceConfigRequest = {
       deviceId: deviceId.trim(),
       deviceKind,
-      wifiSsid: wifiSsid.trim(),
-      wifiPassword: wifiPassword.trim(),
+      bleEnabled: true,
       enablePasswordProtection,
       secureConfigPassword: enablePasswordProtection ? secureConfigPassword.trim() : undefined,
       features,
@@ -166,7 +155,7 @@ export default function DeviceConfigPage() {
             <p className="font-data text-xs uppercase tracking-[0.24em] text-text-dim">Admin + Dev Console</p>
             <h1 className="mt-1 text-3xl font-semibold text-balance">USB Device Configuration Dashboard</h1>
             <p className="mt-1 text-sm text-text-dim text-balance">
-              Configure employee tags and scanners over USB/ADB with WiFi provisioning and password-protected feature toggles.
+              Configure employee tags and scanners over USB/ADB with BLE provisioning and password-protected feature toggles.
             </p>
           </div>
           <StatusPill tone={hasUsbAccess ? "success" : "error"}>{hasUsbAccess ? "Access granted" : "Access denied"}</StatusPill>
@@ -220,17 +209,6 @@ export default function DeviceConfigPage() {
                 </option>
               ))}
             </select>
-
-            <label className="block text-sm text-text-dim">WiFi SSID</label>
-            <AppInput value={wifiSsid} onChange={(event) => setWifiSsid(event.target.value)} placeholder="Office-WiFi-5G" />
-
-            <label className="block text-sm text-text-dim">WiFi Password</label>
-            <AppInput
-              type="password"
-              value={wifiPassword}
-              onChange={(event) => setWifiPassword(event.target.value)}
-              placeholder="Strong network password"
-            />
 
             <label className="mt-2 flex items-center gap-2 text-sm text-text-dim">
               <input

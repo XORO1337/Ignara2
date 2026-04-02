@@ -7,6 +7,7 @@ type JwtPayload = {
   sub: string;
   email: string;
   role: string;
+  gender?: "male" | "female" | "other";
   orgId: string;
   isDevAllowlisted?: boolean;
 };
@@ -26,6 +27,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: JwtPayload) {
     return {
       ...payload,
+      gender: payload.gender ?? "other",
       isDevAllowlisted: isDevAllowlistedEmail(payload.email),
     };
   }

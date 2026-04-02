@@ -1,3 +1,7 @@
 {
-  "/dashboard/page": "app/dashboard/page.js"
+  "/login/page": "app/login/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/device-config/page": "app/device-config/page.js",
+  "/map-editor/page": "app/map-editor/page.js",
+  "/page": "app/page.js"
 }

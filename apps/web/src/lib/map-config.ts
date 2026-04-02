@@ -1,12 +1,16 @@
 import type { RoomZone } from "@ignara/sharedtypes";
 
+export type MapPropType = "generic" | "player-male" | "player-female";
+
 export type MapPropElement = {
   id: string;
   label: string;
+  propType: MapPropType;
   x: number;
   y: number;
   w: number;
   h: number;
+  rotation: number;
   fill?: string;
 };
 
@@ -37,6 +41,24 @@ function toNumber(value: unknown, fallback: number) {
   return fallback;
 }
 
+function parseStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((entry): entry is string => typeof entry === "string")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function parsePropType(value: unknown): MapPropType {
+  if (value === "player-male" || value === "player-female") {
+    return value;
+  }
+  return "generic";
+}
+
 export function parseRoomsFromMapConfig(jsonConfig: Record<string, unknown> | null | undefined): RoomZone[] {
   const roomsValue = jsonConfig?.rooms;
   if (!Array.isArray(roomsValue)) {
@@ -58,10 +80,13 @@ export function parseRoomsFromMapConfig(jsonConfig: Record<string, unknown> | nu
       id,
       label,
       scannerDeviceId: typeof candidate.scannerDeviceId === "string" ? candidate.scannerDeviceId : undefined,
+      beaconId: typeof candidate.beaconId === "string" ? candidate.beaconId : undefined,
+      beaconIds: parseStringArray(candidate.beaconIds),
       x: toNumber(candidate.x, 60 + index * 18),
       y: toNumber(candidate.y, 60 + index * 14),
       w: toNumber(candidate.w, 140),
       h: toNumber(candidate.h, 90),
+      rotation: toNumber(candidate.rotation, 0),
     });
   });
 
@@ -88,10 +113,12 @@ function parsePropsFromMapConfig(jsonConfig: Record<string, unknown> | null | un
     parsedProps.push({
       id,
       label,
+      propType: parsePropType(candidate.propType),
       x: toNumber(candidate.x, 120 + index * 16),
       y: toNumber(candidate.y, 120 + index * 16),
       w: toNumber(candidate.w, 42),
       h: toNumber(candidate.h, 42),
+      rotation: toNumber(candidate.rotation, 0),
       fill: typeof candidate.fill === "string" ? candidate.fill : "rgba(244,114,182,0.35)",
     });
   });

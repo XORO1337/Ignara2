@@ -1,42 +1,23 @@
-import { ConflictException, Injectable, Logger, NotFoundException, OnModuleDestroy } from "@nestjs/common";
+import { ConflictException, Injectable, NotFoundException } from "@nestjs/common";
 import { randomUUID } from "node:crypto";
 import { InjectRepository } from "@nestjs/typeorm";
 import type {
-  DeviceWifiConfigCommand,
   ScannerDeviceSummary,
   TagDeviceSummary,
   UsbConfigCommandBundle,
   UsbDeviceConfigPayload,
   UsbDeviceConfigRequest,
 } from "@ignara/sharedtypes";
-import mqtt, { MqttClient } from "mqtt";
 import { Repository } from "typeorm";
 import { hashPassword } from "../auth/password";
 import { DeviceEntity } from "../entities/device.entity";
 
 @Injectable()
-export class DevicesService implements OnModuleDestroy {
-  private readonly logger = new Logger(DevicesService.name);
-  private readonly mqttClient: MqttClient;
-
+export class DevicesService {
   constructor(
     @InjectRepository(DeviceEntity)
     private readonly devicesRepository: Repository<DeviceEntity>,
-  ) {
-    this.mqttClient = mqtt.connect(process.env.MQTT_URL ?? "mqtt://localhost:1883");
-
-    this.mqttClient.on("connect", () => {
-      this.logger.log("Connected to MQTT broker for device config publishing");
-    });
-
-    this.mqttClient.on("error", (error) => {
-      this.logger.error("MQTT client error", error.message);
-    });
-  }
-
-  onModuleDestroy() {
-    this.mqttClient.end(true);
-  }
+  ) {}
 
   async listTagsByOrg(orgId: string): Promise<TagDeviceSummary[]> {
     const tags = await this.devicesRepository.find({
@@ -49,8 +30,7 @@ export class DevicesService implements OnModuleDestroy {
       orgId: tag.orgId,
       type: "tag",
       roomId: tag.roomId,
-      wifiSsid: tag.wifiSsid,
-      wifiUpdatedAt: tag.wifiUpdatedAt ? tag.wifiUpdatedAt.toISOString() : null,
+      bleProvisionedAt: tag.bleProvisionedAt ? tag.bleProvisionedAt.toISOString() : null,
     }));
   }
 
@@ -95,45 +75,7 @@ export class DevicesService implements OnModuleDestroy {
       orgId: saved.orgId,
       type: "tag",
       roomId: saved.roomId,
-      wifiSsid: saved.wifiSsid,
-      wifiUpdatedAt: saved.wifiUpdatedAt ? saved.wifiUpdatedAt.toISOString() : null,
-    };
-  }
-
-  async assignWifiCredentials(input: {
-    orgId: string;
-    deviceId: string;
-    ssid: string;
-    password: string;
-  }): Promise<TagDeviceSummary> {
-    const device = await this.devicesRepository.findOne({
-      where: { deviceId: input.deviceId, orgId: input.orgId, type: "tag" },
-    });
-
-    if (!device) {
-      throw new NotFoundException("Tag device not found");
-    }
-
-    device.wifiSsid = input.ssid;
-    device.wifiPassword = input.password;
-    device.wifiUpdatedAt = new Date();
-    const saved = await this.devicesRepository.save(device);
-
-    const command: DeviceWifiConfigCommand = {
-      ssid: input.ssid,
-      password: input.password,
-      ts: Date.now(),
-    };
-
-    await this.publishConfig(saved.deviceId, command);
-
-    return {
-      id: saved.deviceId,
-      orgId: saved.orgId,
-      type: "tag",
-      roomId: saved.roomId,
-      wifiSsid: saved.wifiSsid,
-      wifiUpdatedAt: saved.wifiUpdatedAt ? saved.wifiUpdatedAt.toISOString() : null,
+      bleProvisionedAt: saved.bleProvisionedAt ? saved.bleProvisionedAt.toISOString() : null,
     };
   }
 
@@ -153,6 +95,9 @@ export class DevicesService implements OnModuleDestroy {
       throw new NotFoundException("Device not found for this organization");
     }
 
+    device.bleProvisionedAt = new Date();
+    await this.devicesRepository.save(device);
+
     const passwordHash = input.request.enablePasswordProtection
       ? hashPassword(input.request.secureConfigPassword ?? "")
       : undefined;
@@ -160,9 +105,9 @@ export class DevicesService implements OnModuleDestroy {
     const payload: UsbDeviceConfigPayload = {
       deviceId: input.request.deviceId,
       deviceKind: input.request.deviceKind,
-      wifi: {
-        ssid: input.request.wifiSsid,
-        password: input.request.wifiPassword,
+      ble: {
+        enabled: input.request.bleEnabled ?? true,
+        txPowerDbm: input.request.bleTxPowerDbm,
       },
       security: {
         enabled: input.request.enablePasswordProtection,
@@ -195,21 +140,5 @@ export class DevicesService implements OnModuleDestroy {
         `adb shell \"am broadcast -a com.ignara.CONFIG_APPLY --es config_path '${targetPath}'\"`,
       ],
     };
-  }
-
-  private publishConfig(deviceId: string, command: DeviceWifiConfigCommand) {
-    const topic = `ignara/config/${deviceId}`;
-    const payload = JSON.stringify(command);
-
-    return new Promise<void>((resolve, reject) => {
-      this.mqttClient.publish(topic, payload, { qos: 1, retain: true }, (error) => {
-        if (error) {
-          reject(error);
-          return;
-        }
-
-        resolve();
-      });
-    });
   }
 }

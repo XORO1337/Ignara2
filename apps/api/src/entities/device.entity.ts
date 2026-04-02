@@ -17,12 +17,6 @@ export class DeviceEntity {
   @Column({ type: "varchar", length: 64, nullable: true, name: "room_id" })
   roomId?: string | null;
 
-  @Column({ type: "varchar", length: 128, nullable: true, name: "wifi_ssid" })
-  wifiSsid?: string | null;
-
-  @Column({ type: "varchar", length: 128, nullable: true, name: "wifi_password" })
-  wifiPassword?: string | null;
-
-  @Column({ type: "timestamptz", nullable: true, name: "wifi_updated_at" })
-  wifiUpdatedAt?: Date | null;
+  @Column({ type: "timestamptz", nullable: true, name: "ble_provisioned_at" })
+  bleProvisionedAt?: Date | null;
 }

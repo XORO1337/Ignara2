@@ -3,7 +3,7 @@
 import type { LastKnownLocation } from "@ignara/sharedtypes";
 import type { KonvaEventObject } from "konva/lib/Node";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Circle, Image as KonvaImage, Layer, Rect, Stage, Text } from "react-konva";
+import { Circle, Image as KonvaImage, Layer, Rect, Stage, Text, Transformer } from "react-konva";
 import { useMapEditorStore } from "../store/map-editor-store";
 
 type MapEditorCanvasProps = {
@@ -13,9 +13,33 @@ type MapEditorCanvasProps = {
 const BASE_WIDTH = 1200;
 const BASE_HEIGHT = 720;
 
+const TRANSFORMER_ANCHORS = [
+  "top-left",
+  "top-center",
+  "top-right",
+  "middle-right",
+  "bottom-right",
+  "bottom-center",
+  "bottom-left",
+  "middle-left",
+];
+
+function propFillForType(propType: string | undefined, fallback?: string) {
+  if (propType === "player-male") {
+    return fallback ?? "rgba(56,189,248,0.35)";
+  }
+  if (propType === "player-female") {
+    return fallback ?? "rgba(244,114,182,0.38)";
+  }
+  return fallback ?? "rgba(244,114,182,0.35)";
+}
+
 export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<any>(null);
+  const transformerRef = useRef<any>(null);
+  const roomNodeRefs = useRef<Record<string, any>>({});
+  const propNodeRefs = useRef<Record<string, any>>({});
   const [stageSize, setStageSize] = useState({ width: BASE_WIDTH, height: BASE_HEIGHT });
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
 
@@ -75,6 +99,40 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
     });
   }
 
+  function handleRoomTransformEnd(id: string, event: KonvaEventObject<Event>) {
+    const node = event.target;
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+
+    node.scaleX(1);
+    node.scaleY(1);
+
+    updateRoom(id, {
+      x: Math.round(node.x()),
+      y: Math.round(node.y()),
+      w: Math.max(30, Math.round(node.width() * scaleX)),
+      h: Math.max(30, Math.round(node.height() * scaleY)),
+      rotation: Math.round(node.rotation()),
+    });
+  }
+
+  function handlePropTransformEnd(id: string, event: KonvaEventObject<Event>) {
+    const node = event.target;
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+
+    node.scaleX(1);
+    node.scaleY(1);
+
+    updateProp(id, {
+      x: Math.round(node.x()),
+      y: Math.round(node.y()),
+      w: Math.max(20, Math.round(node.width() * scaleX)),
+      h: Math.max(20, Math.round(node.height() * scaleY)),
+      rotation: Math.round(node.rotation()),
+    });
+  }
+
   function toWorldPoint(clientX: number, clientY: number) {
     const stage = stageRef.current;
     if (!stage) {
@@ -110,20 +168,60 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
       return;
     }
 
-    if (payload === "prop") {
+    if (payload === "prop" || payload === "prop-player-male" || payload === "prop-player-female") {
       const id = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `prop-${Date.now()}`;
+      const propType =
+        payload === "prop-player-male"
+          ? "player-male"
+          : payload === "prop-player-female"
+            ? "player-female"
+            : "generic";
       addProp({
         id,
-        label: `Prop ${props.length + 1}`,
+        label:
+          propType === "player-male"
+            ? `Male Player ${props.length + 1}`
+            : propType === "player-female"
+              ? `Female Player ${props.length + 1}`
+              : `Prop ${props.length + 1}`,
+        propType,
         x: point.x,
         y: point.y,
         w: 44,
         h: 44,
-        fill: "rgba(244,114,182,0.35)",
+        rotation: 0,
+        fill: propFillForType(propType),
       });
       selectTarget({ type: "prop", id });
     }
   }
+
+  useEffect(() => {
+    const transformer = transformerRef.current;
+    if (!transformer) {
+      return;
+    }
+
+    if (!selectedTarget || selectedTarget.type === "background") {
+      transformer.nodes([]);
+      transformer.getLayer()?.batchDraw();
+      return;
+    }
+
+    const selectedNode =
+      selectedTarget.type === "room"
+        ? roomNodeRefs.current[selectedTarget.id]
+        : propNodeRefs.current[selectedTarget.id];
+
+    if (!selectedNode) {
+      transformer.nodes([]);
+      transformer.getLayer()?.batchDraw();
+      return;
+    }
+
+    transformer.nodes([selectedNode]);
+    transformer.getLayer()?.batchDraw();
+  }, [props, rooms, selectedTarget]);
 
   function handleWheel(event: KonvaEventObject<WheelEvent>) {
     event.evt.preventDefault();
@@ -183,6 +281,11 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
             selectTarget(null);
           }
         }}
+        onTap={(event) => {
+          if (event.target === event.target.getStage()) {
+            selectTarget(null);
+          }
+        }}
       >
         <Layer>
           <Rect
@@ -206,6 +309,7 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
               image={backgroundImage}
               opacity={background.opacity}
               onClick={() => selectTarget({ type: "background" })}
+              onTap={() => selectTarget({ type: "background" })}
             />
           ) : null}
 
@@ -214,17 +318,27 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
             return (
               <Rect
                 key={room.id}
+                ref={(node) => {
+                  if (node) {
+                    roomNodeRefs.current[room.id] = node;
+                  } else {
+                    delete roomNodeRefs.current[room.id];
+                  }
+                }}
                 x={room.x}
                 y={room.y}
                 width={room.w}
                 height={room.h}
+                rotation={room.rotation ?? 0}
                 fill="rgba(56,189,248,0.18)"
                 stroke={selected ? "rgba(250,204,21,0.98)" : "rgba(56,189,248,0.95)"}
                 strokeWidth={selected ? 3 : 2}
                 cornerRadius={10}
                 draggable
                 onDragEnd={(event) => updateDraggedPosition(room.id, event)}
+                onTransformEnd={(event) => handleRoomTransformEnd(room.id, event)}
                 onClick={() => selectTarget({ type: "room", id: room.id })}
+                onTap={() => selectTarget({ type: "room", id: room.id })}
               />
             );
           })}
@@ -234,17 +348,27 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
             return (
               <Rect
                 key={prop.id}
+                ref={(node) => {
+                  if (node) {
+                    propNodeRefs.current[prop.id] = node;
+                  } else {
+                    delete propNodeRefs.current[prop.id];
+                  }
+                }}
                 x={prop.x}
                 y={prop.y}
                 width={prop.w}
                 height={prop.h}
-                fill={prop.fill ?? "rgba(244,114,182,0.35)"}
+                rotation={prop.rotation ?? 0}
+                fill={propFillForType(prop.propType, prop.fill)}
                 stroke={selected ? "rgba(250,204,21,0.98)" : "rgba(244,114,182,0.95)"}
                 strokeWidth={selected ? 3 : 2}
                 cornerRadius={8}
                 draggable
                 onDragEnd={(event) => updateDraggedPropPosition(prop.id, event)}
+                onTransformEnd={(event) => handlePropTransformEnd(prop.id, event)}
                 onClick={() => selectTarget({ type: "prop", id: prop.id })}
+                onTap={() => selectTarget({ type: "prop", id: prop.id })}
               />
             );
           })}
@@ -265,11 +389,24 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
               key={`${prop.id}-label`}
               x={prop.x + 6}
               y={prop.y + Math.max(3, prop.h - 18)}
-              text={prop.label}
+              text={prop.propType === "player-male" ? `${prop.label} (M)` : prop.propType === "player-female" ? `${prop.label} (F)` : prop.label}
               fontSize={11}
               fill="rgba(248,250,252,0.95)"
             />
           ))}
+
+          <Transformer
+            ref={transformerRef}
+            rotateEnabled
+            enabledAnchors={TRANSFORMER_ANCHORS}
+            boundBoxFunc={(_oldBox, newBox) => {
+              const minSize = 18;
+              if (Math.abs(newBox.width) < minSize || Math.abs(newBox.height) < minSize) {
+                return _oldBox;
+              }
+              return newBox;
+            }}
+          />
 
           {connectedLocations.map((location, index) => {
             const room = rooms.find((entry) => entry.id === location.roomId);
@@ -297,7 +434,7 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
       </Stage>
 
       <p className="mt-2 text-xs text-text-dim">
-        Drag Room Zone or Prop from the left panel into the canvas. Drag empty map to pan. Use mouse wheel to zoom.
+        Tap or click shapes to select, then drag, resize, or rotate with handles. Drag empty map to pan and use mouse wheel to zoom.
       </p>
     </div>
   );

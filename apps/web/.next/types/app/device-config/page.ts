@@ -1,4 +1,4 @@
-// File: /workspaces/Ignara/apps/web/src/app/device-config/page.tsx
+// File: /workspace/apps/web/src/app/device-config/page.tsx
 import * as entry from '../../../../src/app/device-config/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

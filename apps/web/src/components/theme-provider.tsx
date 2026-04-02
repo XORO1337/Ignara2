@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-type ThemeMode = "light" | "dark" | "system";
+type ThemeMode = "light" | "dark";
 type ResolvedTheme = "light" | "dark";
 
 type ThemeContextValue = {
@@ -26,39 +26,24 @@ function getSystemTheme(): ResolvedTheme {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>("system");
+  const [mode, setMode] = useState<ThemeMode>("light");
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>("light");
 
   useEffect(() => {
     const stored = window.localStorage.getItem(STORAGE_KEY);
-    if (stored === "light" || stored === "dark" || stored === "system") {
+    if (stored === "light" || stored === "dark") {
       setMode(stored);
+      return;
     }
+
+    setMode(getSystemTheme());
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-
-    const applyTheme = () => {
-      const nextResolvedTheme = mode === "system" ? getSystemTheme() : mode;
-      document.documentElement.dataset.theme = nextResolvedTheme;
-      document.documentElement.style.colorScheme = nextResolvedTheme;
-      setResolvedTheme(nextResolvedTheme);
-    };
-
-    const handleMediaChange = () => {
-      if (mode === "system") {
-        applyTheme();
-      }
-    };
-
-    applyTheme();
-    mediaQuery.addEventListener("change", handleMediaChange);
+    document.documentElement.dataset.theme = mode;
+    document.documentElement.style.colorScheme = mode;
+    setResolvedTheme(mode);
     window.localStorage.setItem(STORAGE_KEY, mode);
-
-    return () => {
-      mediaQuery.removeEventListener("change", handleMediaChange);
-    };
   }, [mode]);
 
   const value = useMemo<ThemeContextValue>(
@@ -67,15 +52,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       resolvedTheme,
       setMode,
       cycleMode: () => {
-        setMode((current) => {
-          if (current === "system") {
-            return "light";
-          }
-          if (current === "light") {
-            return "dark";
-          }
-          return "system";
-        });
+        setMode((current) => (current === "light" ? "dark" : "light"));
       },
     }),
     [mode, resolvedTheme],

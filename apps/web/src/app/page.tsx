@@ -12,7 +12,7 @@ export default function HomePage() {
         </h1>
         <p className="mt-5 max-w-3xl text-base text-text-dim md:text-lg">
           Ignara unifies room-level employee visibility, device operations, and onsite notifications across one self-hosted stack.
-          Managers monitor occupancy in real time, assign tag network credentials remotely, and deliver team messages instantly.
+          Managers monitor occupancy in real time, provision tag BLE behavior remotely, and deliver team messages instantly.
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <Link
@@ -42,9 +42,9 @@ export default function HomePage() {
         </GlassCard>
         <GlassCard>
           <p className="font-data text-xs uppercase tracking-[0.2em] text-text-dim">Device Operations</p>
-          <h2 className="mt-2 text-xl font-semibold">Tag WiFi Commanding</h2>
+          <h2 className="mt-2 text-xl font-semibold">Tag BLE Provisioning</h2>
           <p className="mt-2 text-sm text-text-dim">
-            Assign per-tag network credentials from dashboard controls and publish retained config messages to field devices.
+            Configure BLE behavior for field tags from the management console and deploy updates with USB provisioning bundles.
           </p>
         </GlassCard>
         <GlassCard>

@@ -1,8 +1,11 @@
-import { io } from "socket.io-client";
-import { API_URL } from "./api";
+import { io, type Socket } from "socket.io-client";
+import { getApiUrl } from "./api";
 
-export const locationSocket = io(`${API_URL}/locations`, {
-  autoConnect: false,
-  path: "/locations/socket.io",
-  withCredentials: true,
-});
+export async function createLocationSocket(): Promise<Socket> {
+  const apiUrl = await getApiUrl();
+  return io(`${apiUrl}/locations`, {
+    autoConnect: false,
+    path: "/locations/socket.io",
+    withCredentials: true,
+  });
+}

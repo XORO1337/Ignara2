@@ -1,8 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "../store/auth-store";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -13,19 +13,36 @@ const baseLinks = [
   { href: "/notifications", label: "Notifications" },
 ];
 
-const loginLink = { href: "/login", label: "Login" };
-
 export function AppShell({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const pathname = usePathname();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const user = useAuthStore((state) => state.user);
+  const isHydrating = useAuthStore((state) => state.isHydrating);
+  const hydrationAttempted = useAuthStore((state) => state.hydrationAttempted);
+  const hydrateSession = useAuthStore((state) => state.hydrateSession);
+  const logout = useAuthStore((state) => state.logout);
   const canAccessMapEditor = user?.role === "admin" || user?.isDevAllowlisted === true;
+
+  useEffect(() => {
+    if (!hydrationAttempted) {
+      void hydrateSession();
+    }
+  }, [hydrateSession, hydrationAttempted]);
+
+  async function handleLogout() {
+    setIsLoggingOut(true);
+    try {
+      await logout();
+      router.push("/login");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  }
 
   const links = [...baseLinks];
   if (canAccessMapEditor) {
     links.splice(3, 0, { href: "/map-editor", label: "Map Editor" });
-  }
-  if (!user) {
-    links.push(loginLink);
   }
 
   return (
@@ -63,7 +80,27 @@ export function AppShell({ children }: { children: ReactNode }) {
               );
             })}
           </nav>
-          <div className="shrink-0">
+          <div className="flex shrink-0 items-center gap-2">
+            {user ? (
+              <>
+                <p className="max-w-[19rem] truncate text-sm font-medium text-text">{user.email}</p>
+                <button
+                  type="button"
+                  disabled={isLoggingOut}
+                  onClick={() => void handleLogout()}
+                  className="inline-flex items-center rounded-full border border-outline bg-panel px-3 py-1.5 text-xs font-semibold text-text transition hover:bg-panel-strong disabled:cursor-not-allowed disabled:opacity-70"
+                >
+                  {isLoggingOut ? "Logging out..." : "Logout"}
+                </button>
+              </>
+            ) : (
+              <Link
+                href="/login"
+                className="inline-flex items-center rounded-full border border-outline bg-panel px-3 py-1.5 text-xs font-semibold text-text transition hover:bg-panel-strong"
+              >
+                {isHydrating ? "Checking session..." : "Sign In"}
+              </Link>
+            )}
             <ThemeToggle />
           </div>
         </div>
