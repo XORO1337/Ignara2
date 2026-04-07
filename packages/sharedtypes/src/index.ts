@@ -218,3 +218,41 @@ export interface UsbConfigCommandBundle {
   adbCommands: string[];
   configJson: string;
 }
+
+// BLE Beacon Types (Server as BLE Peripheral)
+
+export interface BleTagConnection {
+  deviceId: string;
+  employeeId?: string;
+  rssi: number;
+  lastSeen: number;
+  connected: boolean;
+}
+
+export interface BleBeaconConfig {
+  deviceId: string;
+  roomId: string;
+  orgId: string;
+  rssiThreshold: number;
+  advertiseName: string;
+}
+
+export interface BleTagRegistrationPayload {
+  deviceId: string;
+  employeeId?: string;
+}
+
+export interface BleProximityReportPayload {
+  deviceId: string;
+  rssi: number;
+  timestamp?: number;
+}
+
+export interface BleBeaconStatus {
+  deviceId: string;
+  roomId: string;
+  orgId: string;
+  active: boolean;
+  connectedTags: number;
+  rssiThreshold: number;
+}

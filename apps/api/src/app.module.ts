@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AuthModule } from "./auth/auth.module";
+import { BleBeaconModule } from "./ble-beacon/ble-beacon.module";
 import { ChatModule } from "./chat/chat.module";
 import { HealthModule } from "./health/health.module";
 import { LocationsModule } from "./locations/locations.module";
@@ -48,6 +49,7 @@ const DEFAULT_DATABASE_URL = "postgresql://ignara:ignara123@localhost:5432/ignar
     }),
     UsersModule,
     AuthModule,
+    BleBeaconModule,
     ChatModule,
     HealthModule,
     MapsModule,

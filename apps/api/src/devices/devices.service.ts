@@ -79,6 +79,44 @@ export class DevicesService {
     };
   }
 
+  async registerServerBeacon(input: {
+    deviceId: string;
+    orgId: string;
+    roomId?: string;
+  }): Promise<ScannerDeviceSummary> {
+    const exists = await this.devicesRepository.findOne({
+      where: { deviceId: input.deviceId },
+    });
+
+    if (exists) {
+      // Update existing device's room assignment
+      exists.roomId = input.roomId ?? null;
+      const saved = await this.devicesRepository.save(exists);
+      return {
+        id: saved.deviceId,
+        orgId: saved.orgId,
+        type: "scanner",
+        roomId: saved.roomId,
+      };
+    }
+
+    const created = this.devicesRepository.create({
+      id: randomUUID(),
+      deviceId: input.deviceId,
+      orgId: input.orgId,
+      type: "scanner",
+      roomId: input.roomId ?? null,
+    });
+
+    const saved = await this.devicesRepository.save(created);
+    return {
+      id: saved.deviceId,
+      orgId: saved.orgId,
+      type: "scanner",
+      roomId: saved.roomId,
+    };
+  }
+
   async generateUsbConfigCommands(input: {
     orgId: string;
     request: UsbDeviceConfigRequest;
