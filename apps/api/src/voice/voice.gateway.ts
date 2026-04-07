@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
-import type { VoiceJoinPayload, VoiceSignalPayload } from "@ignara/sharedtypes";
+import type { VoiceErrorPayload, VoiceJoinPayload, VoiceSignalPayload } from "@ignara/sharedtypes";
 import { Server } from "socket.io";
 import type { Socket } from "socket.io";
 import { validateCorsOrigin } from "../common/cors-origin";
@@ -64,6 +64,10 @@ export class VoiceGateway implements OnModuleDestroy {
 
   private async handleJoin(socket: Socket, payload: VoiceJoinPayload) {
     if (!payload?.orgId || !payload?.employeeId || !payload?.roomId) {
+      this.emitVoiceError(socket, {
+        reason: "invalid-payload",
+        message: "Voice join denied: orgId, employeeId, and roomId are required.",
+      });
       return;
     }
 
@@ -71,13 +75,41 @@ export class VoiceGateway implements OnModuleDestroy {
     const employeeId = payload.employeeId.trim();
     const roomId = payload.roomId.trim();
     if (!orgId || !employeeId || !roomId) {
+      this.emitVoiceError(socket, {
+        reason: "invalid-payload",
+        message: "Voice join denied: orgId, employeeId, and roomId are required.",
+      });
       return;
     }
 
     const currentLocations = await this.locationsService.getCurrentByOrg(orgId);
     const currentLocation = currentLocations.find((entry) => entry.employeeId === employeeId);
-    if (!currentLocation || !currentLocation.connected || currentLocation.roomId !== roomId) {
-      socket.emit("voice:error", "Voice join denied: user must be connected in the target room.");
+    if (!currentLocation) {
+      this.emitVoiceError(socket, {
+        reason: "missing-location",
+        message: "Voice join denied: current location is not available.",
+        requestedRoomId: roomId,
+      });
+      return;
+    }
+
+    if (!currentLocation.connected) {
+      this.emitVoiceError(socket, {
+        reason: "not-connected",
+        message: "Voice join denied: user is disconnected.",
+        requestedRoomId: roomId,
+        currentRoomId: currentLocation.roomId,
+      });
+      return;
+    }
+
+    if (currentLocation.roomId !== roomId) {
+      this.emitVoiceError(socket, {
+        reason: "room-mismatch",
+        message: "Voice join denied: user must be connected in the target room.",
+        requestedRoomId: roomId,
+        currentRoomId: currentLocation.roomId,
+      });
       return;
     }
 
@@ -118,11 +150,19 @@ export class VoiceGateway implements OnModuleDestroy {
 
   private handleSignal(socket: Socket, payload: VoiceSignalPayload) {
     if (!this.server || !payload?.to || !payload?.signal) {
+      this.emitVoiceError(socket, {
+        reason: "invalid-payload",
+        message: "Voice signal rejected: invalid target or signal payload.",
+      });
       return;
     }
 
     const participant = this.participantBySocketId.get(socket.id);
     if (!participant) {
+      this.emitVoiceError(socket, {
+        reason: "not-in-room",
+        message: "Voice signal rejected: user is not currently in a voice room.",
+      });
       return;
     }
 
@@ -130,6 +170,10 @@ export class VoiceGateway implements OnModuleDestroy {
     const members = this.roomMembers.get(roomKey);
     const targetSocketId = members?.get(payload.to);
     if (!targetSocketId) {
+      this.emitVoiceError(socket, {
+        reason: "not-in-room",
+        message: "Voice signal rejected: target user is not in the active room.",
+      });
       return;
     }
 
@@ -137,5 +181,9 @@ export class VoiceGateway implements OnModuleDestroy {
       from: participant.employeeId,
       signal: payload.signal,
     });
+  }
+
+  private emitVoiceError(socket: Socket, payload: VoiceErrorPayload) {
+    socket.emit("voice:error", payload);
   }
 }

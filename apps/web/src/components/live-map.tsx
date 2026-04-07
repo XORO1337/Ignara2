@@ -103,6 +103,24 @@ function getRoomBlipBounds(room: RoomZone) {
   };
 }
 
+function getStoredLocationPoint(
+  location: LastKnownLocation,
+  bounds: { minX: number; maxX: number; minY: number; maxY: number },
+): { x: number; y: number } | null {
+  if (typeof location.x !== "number" || !Number.isFinite(location.x)) {
+    return null;
+  }
+
+  if (typeof location.y !== "number" || !Number.isFinite(location.y)) {
+    return null;
+  }
+
+  return {
+    x: clamp(location.x, bounds.minX, bounds.maxX),
+    y: clamp(location.y, bounds.minY, bounds.maxY),
+  };
+}
+
 function propFillForType(propType: string, fallback?: string) {
   if (propType === "player-male") {
     return fallback ?? "rgba(56,189,248,0.35)";
@@ -349,16 +367,7 @@ export function LiveMap({
           return;
         }
 
-        if (!location) {
-          changed = true;
-          return;
-        }
-        if (location.roomId !== value.roomId || !roomLookup.has(value.roomId)) {
-          changed = true;
-          return;
-        }
-
-        next[employeeId] = value;
+        changed = true;
       });
 
       return changed ? next : prev;
@@ -383,13 +392,14 @@ export function LiveMap({
       const bounds = getRoomBlipBounds(room);
 
       roomLocations.forEach((location, index) => {
-        const x = clamp(room.x + 14 + (index % 4) * 18, bounds.minX, bounds.maxX);
-        const y = clamp(room.y + room.h - 16 - Math.floor(index / 4) * 18, bounds.minY, bounds.maxY);
+        const fallbackX = clamp(room.x + 14 + (index % 4) * 18, bounds.minX, bounds.maxX);
+        const fallbackY = clamp(room.y + room.h - 16 - Math.floor(index / 4) * 18, bounds.minY, bounds.maxY);
+        const storedPoint = getStoredLocationPoint(location, bounds);
 
         positions.set(location.employeeId, {
           roomId: room.id,
-          x,
-          y,
+          x: storedPoint ? storedPoint.x : fallbackX,
+          y: storedPoint ? storedPoint.y : fallbackY,
         });
       });
     });

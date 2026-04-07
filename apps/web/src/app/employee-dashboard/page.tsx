@@ -45,7 +45,6 @@ export default function EmployeeDashboardPage() {
   const locationsRecord = useLocationStore((state) => state.locations);
   const setLocations = useLocationStore((state) => state.setLocations);
   const upsertLocation = useLocationStore((state) => state.upsertLocation);
-  const removeLocation = useLocationStore((state) => state.removeLocation);
   const addToast = useToastStore((state) => state.addToast);
 
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -61,10 +60,10 @@ export default function EmployeeDashboardPage() {
   const [disconnectPings, setDisconnectPings] = useState<DisconnectPing[]>([]);
   const [selectedRoomIndex, setSelectedRoomIndex] = useState(0);
   const [jumpStatus, setJumpStatus] = useState<string | null>(null);
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
 
   const spawnedPlayerRef = useRef<Record<string, boolean>>({});
   const employeeEmailSetRef = useRef<Set<string>>(new Set());
-  const disconnectRemovalTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   function hydrateMapFromList(maps: PersistedMap[]) {
     const activeMap = pickActiveMap(maps);
@@ -83,16 +82,6 @@ export default function EmployeeDashboardPage() {
     setMapRooms(parsedMap.rooms);
     setMapProps(parsedMap.props);
     setMapBackground(parsedMap.background);
-  }
-
-  function clearDisconnectRemovalTimer(employeeId: string) {
-    const timer = disconnectRemovalTimersRef.current[employeeId];
-    if (!timer) {
-      return;
-    }
-
-    clearTimeout(timer);
-    delete disconnectRemovalTimersRef.current[employeeId];
   }
 
   useEffect(() => {
@@ -144,7 +133,7 @@ export default function EmployeeDashboardPage() {
 
         if (active) {
           employeeEmailSetRef.current = employeeEmails;
-          setLocations(current.filter((location) => employeeEmails.has(location.employeeId) && location.connected));
+          setLocations(current.filter((location) => employeeEmails.has(location.employeeId)));
           setDisconnectPings([]);
           hydrateMapFromList(maps);
           setUserGenderMap(
@@ -167,7 +156,11 @@ export default function EmployeeDashboardPage() {
           locationSocket = socket;
           socket.on("connect", () => {
             socket.emit("join", { room: `org:${orgId}:locations` });
-            setSocketState("connected");
+          });
+          socket.on("joined", (room: string) => {
+            if (room === `org:${orgId}:locations`) {
+              setSocketState("connected");
+            }
           });
           socket.on("disconnect", () => {
             setSocketState("disconnected");
@@ -178,7 +171,6 @@ export default function EmployeeDashboardPage() {
             }
 
             if (location.connected) {
-              clearDisconnectRemovalTimer(location.employeeId);
               setDisconnectPings((prev) => prev.filter((ping) => ping.employeeId !== location.employeeId));
               upsertLocation(location);
               return;
@@ -196,13 +188,6 @@ export default function EmployeeDashboardPage() {
 
               return [...prev.filter((ping) => ping.employeeId !== location.employeeId), nextPing];
             });
-
-            clearDisconnectRemovalTimer(location.employeeId);
-            disconnectRemovalTimersRef.current[location.employeeId] = setTimeout(() => {
-              removeLocation(location.employeeId);
-              setDisconnectPings((prev) => prev.filter((ping) => ping.employeeId !== location.employeeId));
-              delete disconnectRemovalTimersRef.current[location.employeeId];
-            }, DISCONNECT_PING_DURATION_MS);
           });
           socket.on("presence:joined", (presence: EmployeePresenceEvent) => {
             if (!employeeEmailSetRef.current.has(presence.employeeId)) {
@@ -253,17 +238,32 @@ export default function EmployeeDashboardPage() {
       active = false;
       if (locationSocket) {
         locationSocket.off("connect");
+        locationSocket.off("joined");
         locationSocket.off("disconnect");
         locationSocket.off("location:update");
         locationSocket.off("presence:joined");
         locationSocket.off("presence:left");
         locationSocket.disconnect();
       }
-
-      Object.values(disconnectRemovalTimersRef.current).forEach((timer) => clearTimeout(timer));
-      disconnectRemovalTimersRef.current = {};
     };
-  }, [addToast, removeLocation, router, setLocations, setUser, upsertLocation, user]);
+  }, [addToast, router, setLocations, setUser, upsertLocation, user]);
+
+  useEffect(() => {
+    if (disconnectPings.length === 0) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      setDisconnectPings((previous) =>
+        previous.filter((ping) => now - ping.startedAt < DISCONNECT_PING_DURATION_MS),
+      );
+    }, 200);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [disconnectPings.length]);
 
   useEffect(() => {
     if (!user || user.role !== "employee" || mapRooms.length === 0) {
@@ -360,6 +360,22 @@ export default function EmployeeDashboardPage() {
     setJumpStatus(`Joined ${room.label}.`);
   }, [moveCurrentPlayer]);
 
+  const disconnectSelf = useCallback(async () => {
+    try {
+      setIsDisconnecting(true);
+      const updated = await apiRequest<LastKnownLocation>("/locations/disconnect/self", {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      upsertLocation(updated);
+      setJumpStatus("You are disconnected. Use room jump to reconnect when ready.");
+    } catch {
+      setJumpStatus("Could not disconnect right now. Please try again.");
+    } finally {
+      setIsDisconnecting(false);
+    }
+  }, [upsertLocation]);
+
   if (user && user.role !== "employee") {
     return (
       <AppContainer>
@@ -397,7 +413,7 @@ export default function EmployeeDashboardPage() {
             mapProps={mapProps}
             background={mapBackground}
             interactive
-            mapStorageKey={activeMapId && user ? `${user.orgId}:${activeMapId}:employee` : null}
+            mapStorageKey={activeMapId && user ? `${user.orgId}:${activeMapId}:employee:${user.email}` : null}
             currentPlayerId={user?.email ?? null}
             genderByEmployee={userGenderMap}
             onMovePlayer={user ? moveCurrentPlayer : undefined}
@@ -412,6 +428,9 @@ export default function EmployeeDashboardPage() {
             </StatusPill>
             <StatusPill tone={connectedLocations.length > 0 ? "success" : "warning"}>
               Employees Online: {connectedLocations.length}
+            </StatusPill>
+            <StatusPill tone={currentUserRoomId ? "success" : "warning"}>
+              You: {currentUserRoomId ? `connected (${currentUserRoomId})` : "disconnected"}
             </StatusPill>
           </div>
 
@@ -456,6 +475,16 @@ export default function EmployeeDashboardPage() {
                 disabled={!selectedRoom || !user}
               >
                 Jump To Selected Room
+              </AppButton>
+
+              <AppButton
+                type="button"
+                variant="ghost"
+                onClick={() => void disconnectSelf()}
+                disabled={!currentUserRoomId || isDisconnecting}
+                loading={isDisconnecting}
+              >
+                Disconnect Me
               </AppButton>
 
               <div className="max-h-[42vh] space-y-2 overflow-auto pr-1">

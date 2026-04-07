@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   ChatMessage,
   LastKnownLocation,
+  VoiceErrorPayload,
   VoiceInboundSignalPayload,
   VoicePeerEvent,
   VoicePeersPayload,
@@ -23,6 +24,8 @@ type EmployeeCollabDockProps = {
 
 const MAX_CHAT_MESSAGES = 120;
 const PEER_MAX_DISTANCE = 420;
+const VOICE_JOIN_RETRY_DELAYS_MS = [350, 750, 1400];
+const VOICE_ROOM_TRANSITION_DELAY_MS = 120;
 
 function shouldInitiateOffer(localEmployeeId: string, peerEmployeeId: string) {
   return localEmployeeId.localeCompare(peerEmployeeId) < 0;
@@ -39,6 +42,17 @@ function formatTime(ts: number) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function normalizeVoiceError(payload: string | VoiceErrorPayload): VoiceErrorPayload {
+  if (typeof payload === "string") {
+    return {
+      reason: "invalid-payload",
+      message: payload,
+    };
+  }
+
+  return payload;
 }
 
 export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsByEmployee }: EmployeeCollabDockProps) {
@@ -62,6 +76,9 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
   const voiceSocketRef = useRef<Socket | null>(null);
   const chatBodyRef = useRef<HTMLDivElement | null>(null);
   const joinedVoiceRoomRef = useRef<string | null>(null);
+  const pendingVoiceJoinRoomRef = useRef<string | null>(null);
+  const voiceJoinRetryTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const voiceJoinAttemptRef = useRef(0);
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Record<string, RTCPeerConnection>>({});
@@ -74,6 +91,31 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
       setUnreadCount(0);
     }
   }, [isOpen]);
+
+  const clearVoiceJoinRetry = useCallback(() => {
+    if (voiceJoinRetryTimerRef.current) {
+      clearTimeout(voiceJoinRetryTimerRef.current);
+      voiceJoinRetryTimerRef.current = null;
+    }
+  }, []);
+
+  const emitVoiceJoin = useCallback(
+    (roomId: string): boolean => {
+      const socket = voiceSocketRef.current;
+      if (!socket || !socket.connected) {
+        return false;
+      }
+
+      socket.emit("voice:join", {
+        orgId,
+        employeeId,
+        roomId,
+      });
+      pendingVoiceJoinRoomRef.current = roomId;
+      return true;
+    },
+    [employeeId, orgId],
+  );
 
   useEffect(() => {
     const node = chatBodyRef.current;
@@ -447,6 +489,9 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
       setVoiceState("off");
       setVoiceError(null);
       setVoicePeers([]);
+      clearVoiceJoinRetry();
+      voiceJoinAttemptRef.current = 0;
+      pendingVoiceJoinRoomRef.current = null;
 
       const existingSocket = voiceSocketRef.current;
       if (existingSocket) {
@@ -489,24 +534,72 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
           setVoiceState("connected");
         });
         nextSocket.on("disconnect", () => {
+          clearVoiceJoinRetry();
+          voiceJoinAttemptRef.current = 0;
+          pendingVoiceJoinRoomRef.current = null;
           setVoiceState("off");
           joinedVoiceRoomRef.current = null;
           setVoicePeers([]);
           closeAllPeerConnections();
         });
-        nextSocket.on("voice:error", (message: string) => {
+        nextSocket.on("voice:error", (rawPayload: VoiceErrorPayload | string) => {
           if (!active) {
             return;
           }
-          setVoiceError(message);
+
+          const payload = normalizeVoiceError(rawPayload);
+          const pendingRoomId = pendingVoiceJoinRoomRef.current;
+          const maxVoiceJoinAttempts = VOICE_JOIN_RETRY_DELAYS_MS.length;
+          const canRetryJoin =
+            payload.reason === "not-connected" &&
+            typeof pendingRoomId === "string" &&
+            pendingRoomId.length > 0 &&
+            voiceJoinAttemptRef.current < maxVoiceJoinAttempts &&
+            voiceSocketRef.current?.connected;
+
+          if (canRetryJoin) {
+            voiceJoinAttemptRef.current += 1;
+            const attempt = voiceJoinAttemptRef.current;
+            const retryDelay = VOICE_JOIN_RETRY_DELAYS_MS[attempt - 1] ?? VOICE_JOIN_RETRY_DELAYS_MS[maxVoiceJoinAttempts - 1];
+            setVoiceError(`Reconnecting voice (${attempt}/${maxVoiceJoinAttempts})...`);
+            clearVoiceJoinRetry();
+
+            voiceJoinRetryTimerRef.current = setTimeout(() => {
+              if (!active || voiceSocketRef.current !== nextSocket || !voiceSocketRef.current?.connected) {
+                return;
+              }
+
+              if (!pendingVoiceJoinRoomRef.current || pendingVoiceJoinRoomRef.current !== pendingRoomId) {
+                return;
+              }
+
+              emitVoiceJoin(pendingRoomId);
+            }, retryDelay);
+            return;
+          }
+
+          clearVoiceJoinRetry();
+          voiceJoinAttemptRef.current = 0;
+          pendingVoiceJoinRoomRef.current = null;
+          joinedVoiceRoomRef.current = null;
+          setVoicePeers([]);
           addToast({
-            message,
+            message: payload.message,
             tone: "warning",
           });
+          setVoiceError(payload.message);
         });
         nextSocket.on("voice:peers", (payload: VoicePeersPayload) => {
           if (!payload || !Array.isArray(payload.peers)) {
             return;
+          }
+
+          if (pendingVoiceJoinRoomRef.current) {
+            joinedVoiceRoomRef.current = pendingVoiceJoinRoomRef.current;
+            pendingVoiceJoinRoomRef.current = null;
+            voiceJoinAttemptRef.current = 0;
+            clearVoiceJoinRetry();
+            setVoiceError(null);
           }
 
           const peers = payload.peers.filter((entry) => typeof entry === "string" && entry !== employeeId);
@@ -561,6 +654,10 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
         if (!active) {
           return;
         }
+        clearVoiceJoinRetry();
+        voiceJoinAttemptRef.current = 0;
+        pendingVoiceJoinRoomRef.current = null;
+        joinedVoiceRoomRef.current = null;
         const message =
           error instanceof Error ? error.message : "Unable to access microphone for proximity voice.";
         setVoiceError(message);
@@ -591,6 +688,9 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
       if (voiceSocketRef.current === socket) {
         voiceSocketRef.current = null;
       }
+      clearVoiceJoinRetry();
+      voiceJoinAttemptRef.current = 0;
+      pendingVoiceJoinRoomRef.current = null;
       joinedVoiceRoomRef.current = null;
       setVoicePeers([]);
       closeAllPeerConnections();
@@ -599,10 +699,12 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
     };
   }, [
     addToast,
+    clearVoiceJoinRetry,
     closeAllPeerConnections,
     closePeerConnection,
     createOfferForPeer,
     employeeId,
+    emitVoiceJoin,
     ensureLocalStream,
     ensurePeerConnection,
     handleInboundSignal,
@@ -621,9 +723,13 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
     }
 
     const joinedRoomId = joinedVoiceRoomRef.current;
+    const pendingRoomId = pendingVoiceJoinRoomRef.current;
     if (!activeRoomId) {
-      if (joinedRoomId) {
+      if (joinedRoomId || pendingRoomId) {
         socket.emit("voice:leave");
+        clearVoiceJoinRetry();
+        voiceJoinAttemptRef.current = 0;
+        pendingVoiceJoinRoomRef.current = null;
         joinedVoiceRoomRef.current = null;
         setVoicePeers([]);
         closeAllPeerConnections();
@@ -631,7 +737,11 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
       return;
     }
 
-    if (joinedRoomId === activeRoomId) {
+    if (joinedRoomId === activeRoomId && !pendingRoomId) {
+      return;
+    }
+
+    if (pendingRoomId === activeRoomId) {
       return;
     }
 
@@ -639,15 +749,38 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
       socket.emit("voice:leave");
       setVoicePeers([]);
       closeAllPeerConnections();
+      joinedVoiceRoomRef.current = null;
     }
 
-    socket.emit("voice:join", {
-      orgId,
-      employeeId,
-      roomId: activeRoomId,
-    });
-    joinedVoiceRoomRef.current = activeRoomId;
-  }, [activeRoomId, closeAllPeerConnections, employeeId, orgId, voiceEnabled, voiceState]);
+    clearVoiceJoinRetry();
+    voiceJoinAttemptRef.current = 0;
+    pendingVoiceJoinRoomRef.current = activeRoomId;
+    setVoiceError(null);
+
+    if (joinedRoomId) {
+      voiceJoinRetryTimerRef.current = setTimeout(() => {
+        if (!voiceSocketRef.current?.connected) {
+          return;
+        }
+
+        if (pendingVoiceJoinRoomRef.current !== activeRoomId) {
+          return;
+        }
+
+        emitVoiceJoin(activeRoomId);
+      }, VOICE_ROOM_TRANSITION_DELAY_MS);
+      return;
+    }
+
+    emitVoiceJoin(activeRoomId);
+  }, [
+    activeRoomId,
+    clearVoiceJoinRetry,
+    closeAllPeerConnections,
+    emitVoiceJoin,
+    voiceEnabled,
+    voiceState,
+  ]);
 
   useEffect(() => {
     if (!voiceEnabled || voicePeers.length === 0) {

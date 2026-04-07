@@ -103,6 +103,20 @@ export interface VoiceInboundSignalPayload {
   signal: VoiceSignal;
 }
 
+export type VoiceErrorReason =
+  | "invalid-payload"
+  | "missing-location"
+  | "not-connected"
+  | "room-mismatch"
+  | "not-in-room";
+
+export interface VoiceErrorPayload {
+  reason: VoiceErrorReason;
+  message: string;
+  requestedRoomId?: string;
+  currentRoomId?: string;
+}
+
 export interface NotificationPayload {
   orgId: string;
   senderId: string;

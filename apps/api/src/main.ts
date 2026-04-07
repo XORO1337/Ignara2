@@ -1,6 +1,7 @@
 import { NestFactory } from "@nestjs/core";
 import type { INestApplication } from "@nestjs/common";
 import cookieParser from "cookie-parser";
+import express from "express";
 import { AppModule } from "./app.module";
 import { ChatGateway } from "./chat/chat.gateway";
 import { validateCorsOrigin } from "./common/cors-origin";
@@ -47,6 +48,8 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.use(cookieParser());
+  app.use(express.json({ limit: "5mb" }));
+  app.use(express.urlencoded({ limit: "5mb", extended: true }));
   app.enableCors({
     origin: (origin, callback) => validateCorsOrigin(origin, callback),
     credentials: true,

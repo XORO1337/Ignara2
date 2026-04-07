@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, Req, UnauthorizedException, UseGuards } from "@nestjs/common";
+import { BadRequestException, Body, Controller, Get, Param, Post, Req, UnauthorizedException, UseGuards } from "@nestjs/common";
 import type { Request } from "express";
 import type { LocationMoveRequest, ScannerLocationEvent } from "@ignara/sharedtypes";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
@@ -75,5 +75,47 @@ export class LocationsController {
     });
 
     return { ok: true };
+  }
+
+  @Post("disconnect/self")
+  @UseGuards(RolesGuard)
+  @Roles("employee")
+  disconnectSelf(@Req() request: Request & { user?: SessionUser }) {
+    const orgId = request.user?.orgId;
+    const employeeId = request.user?.email;
+
+    if (!orgId || !employeeId) {
+      throw new UnauthorizedException("Missing organization context");
+    }
+
+    return this.locationsService.disconnectEmployee({
+      orgId,
+      employeeId,
+      reason: "manual",
+    });
+  }
+
+  @Post("disconnect/:employeeId")
+  @UseGuards(RolesGuard)
+  @Roles("admin", "manager")
+  disconnectByManager(
+    @Req() request: Request & { user?: SessionUser },
+    @Param("employeeId") rawEmployeeId: string,
+  ) {
+    const orgId = request.user?.orgId;
+    if (!orgId) {
+      throw new UnauthorizedException("Missing organization context");
+    }
+
+    const employeeId = rawEmployeeId?.trim();
+    if (!employeeId) {
+      throw new BadRequestException("employeeId is required");
+    }
+
+    return this.locationsService.disconnectEmployee({
+      orgId,
+      employeeId,
+      reason: "manual",
+    });
   }
 }

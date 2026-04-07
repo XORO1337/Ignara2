@@ -8,8 +8,6 @@ import { MapEntity } from "../entities/map.entity";
 import { UserEntity } from "../entities/user.entity";
 import { LocationsGateway } from "./locations.gateway";
 
-const DEFAULT_SIGNAL_TIMEOUT_MS = 30_000;
-const DEFAULT_STALE_SCAN_INTERVAL_MS = 5_000;
 const DEFAULT_BEACON_CACHE_TTL_MS = 10_000;
 const DEFAULT_EMPLOYEE_ROLE_CACHE_TTL_MS = 10_000;
 
@@ -23,16 +21,19 @@ type EmployeeRoleCacheValue = {
   employeeIds: Set<string>;
 };
 
+type RoomIdCacheValue = {
+  updatedAt: number;
+  roomIds: Set<string>;
+};
+
 @Injectable()
 export class LocationsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(LocationsService.name);
   private readonly redis: Redis;
   private readonly mqttClient: MqttClient;
-  private staleScanTimer?: NodeJS.Timeout;
   private readonly beaconCache = new Map<string, BeaconCacheValue>();
   private readonly employeeRoleCache = new Map<string, EmployeeRoleCacheValue>();
-  private readonly staleSignalTimeoutMs = Number(process.env.LOCATION_SIGNAL_TIMEOUT_MS ?? DEFAULT_SIGNAL_TIMEOUT_MS);
-  private readonly staleScanIntervalMs = Number(process.env.LOCATION_STALE_SCAN_INTERVAL_MS ?? DEFAULT_STALE_SCAN_INTERVAL_MS);
+  private readonly roomIdCache = new Map<string, RoomIdCacheValue>();
   private readonly beaconCacheTtlMs = Number(process.env.LOCATION_BEACON_CACHE_TTL_MS ?? DEFAULT_BEACON_CACHE_TTL_MS);
   private readonly employeeRoleCacheTtlMs = Number(
     process.env.LOCATION_EMPLOYEE_ROLE_CACHE_TTL_MS ?? DEFAULT_EMPLOYEE_ROLE_CACHE_TTL_MS,
@@ -67,18 +68,9 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
         this.logger.error("Failed to process location payload", String(error));
       }
     });
-
-    this.staleScanTimer = setInterval(() => {
-      void this.markStaleLocations();
-    }, this.staleScanIntervalMs);
   }
 
   async onModuleDestroy() {
-    if (this.staleScanTimer) {
-      clearInterval(this.staleScanTimer);
-      this.staleScanTimer = undefined;
-    }
-
     this.mqttClient.end(true);
     await this.redis.quit();
   }
@@ -136,6 +128,8 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
       throw new BadRequestException("roomId is required before player movement can be persisted");
     }
 
+    await this.assertValidRoomId(input.orgId, roomId);
+
     const ts = Date.now();
     const location: LastKnownLocation = {
       orgId: input.orgId,
@@ -177,15 +171,39 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
     const ts = event.ts ?? Date.now();
     const key = this.locationKey(orgId, event.employeeId);
     const previous = await this.getLocationByKey(key);
+
+    // Explicit disconnections are authoritative and must not be overturned by scanner telemetry.
+    if (previous && !previous.connected) {
+      return;
+    }
+
     const inferredRoomId = await this.resolveRoomFromBeacon(orgId, event.beaconId, event.roomId);
     const lastKnownRoom = previous?.roomId ?? inferredRoomId;
+    let resolvedRoomId = event.event === "enter" ? inferredRoomId : lastKnownRoom;
+    const roomIds = await this.getRoomIdSet(orgId);
+
+    if (roomIds.size > 0 && !roomIds.has(resolvedRoomId)) {
+      const fallbackRoomId =
+        previous?.roomId && roomIds.has(previous.roomId)
+          ? previous.roomId
+          : null;
+
+      if (!fallbackRoomId) {
+        this.logger.warn(
+          `Ignored scanner event with unknown roomId "${resolvedRoomId}" for ${event.employeeId}`,
+        );
+        return;
+      }
+
+      resolvedRoomId = fallbackRoomId;
+    }
 
     const location: LastKnownLocation = {
       orgId,
       employeeId: event.employeeId,
-      roomId: event.event === "enter" ? inferredRoomId : lastKnownRoom,
+      roomId: resolvedRoomId,
       scannerId: event.scannerId,
-      connected: event.event === "enter",
+      connected: true,
       lastEvent: event.event,
       x: previous?.x,
       y: previous?.y,
@@ -194,8 +212,8 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
       beaconId: event.beaconId,
       beaconRssi: event.beaconRssi,
       proximityScore: event.proximityScore,
-      signalLostAt: event.event === "exit" ? ts : undefined,
-      disconnectedAt: event.event === "exit" ? ts : undefined,
+      signalLostAt: undefined,
+      disconnectedAt: undefined,
       ts,
     };
 
@@ -203,51 +221,36 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
     await this.emitLocationIfEmployee(location, previous, "scanner");
   }
 
-  private async markStaleLocations() {
-    const keys: string[] = [];
-    let cursor = "0";
+  async disconnectEmployee(input: {
+    orgId: string;
+    employeeId: string;
+    reason?: EmployeePresenceEvent["reason"];
+  }): Promise<LastKnownLocation> {
+    const key = this.locationKey(input.orgId, input.employeeId);
+    const previous = await this.getLocationByKey(key);
+    if (!previous) {
+      throw new BadRequestException("No known location found for this employee.");
+    }
 
-    do {
-      const [nextCursor, batch] = await this.redis.scan(cursor, "MATCH", "ignara:loc:*", "COUNT", 200);
-      cursor = nextCursor;
-      keys.push(...batch);
-    } while (cursor !== "0");
-
-    if (keys.length === 0) {
-      return;
+    if (!previous.connected) {
+      this.gateway.emitOrgLocation(previous.orgId, previous);
+      return previous;
     }
 
     const now = Date.now();
-    const values = await this.redis.mget(keys);
+    const disconnectedLocation: LastKnownLocation = {
+      ...previous,
+      connected: false,
+      lastEvent: "exit",
+      signalSource: "manual",
+      signalLostAt: now,
+      disconnectedAt: now,
+      ts: now,
+    };
 
-    await Promise.all(
-      values.map(async (entry, index) => {
-        if (!entry) {
-          return;
-        }
-
-        const current = this.parseStoredLocation(entry);
-        if (!current || !current.connected) {
-          return;
-        }
-
-        if (now - current.ts < this.staleSignalTimeoutMs) {
-          return;
-        }
-
-        const staleLocation: LastKnownLocation = {
-          ...current,
-          connected: false,
-          lastEvent: "exit",
-          disconnectedAt: now,
-          signalLostAt: now,
-          ts: now,
-        };
-
-        await this.redis.set(keys[index], JSON.stringify(staleLocation));
-        await this.emitLocationIfEmployee(staleLocation, current, "stale");
-      }),
-    );
+    await this.redis.set(key, JSON.stringify(disconnectedLocation));
+    await this.emitLocationIfEmployee(disconnectedLocation, previous, input.reason ?? "manual");
+    return disconnectedLocation;
   }
 
   private async emitLocationIfEmployee(
@@ -298,6 +301,13 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
     });
 
     return employeeIds;
+  }
+
+  private async assertValidRoomId(orgId: string, roomId: string) {
+    const roomIds = await this.getRoomIdSet(orgId);
+    if (roomIds.size > 0 && !roomIds.has(roomId)) {
+      throw new BadRequestException(`Unknown roomId: ${roomId}`);
+    }
   }
 
   private locationKey(orgId: string, employeeId: string) {
@@ -426,6 +436,42 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
     });
 
     return roomByBeaconId;
+  }
+
+  private async getRoomIdSet(orgId: string): Promise<Set<string>> {
+    const now = Date.now();
+    const cached = this.roomIdCache.get(orgId);
+    if (cached && now - cached.updatedAt < this.beaconCacheTtlMs) {
+      return cached.roomIds;
+    }
+
+    const maps = await this.mapsRepository.find({ where: { orgId } });
+    const roomIds = new Set<string>();
+
+    maps.forEach((map) => {
+      const rooms = map.jsonConfig?.rooms;
+      if (!Array.isArray(rooms)) {
+        return;
+      }
+
+      rooms.forEach((entry) => {
+        if (!entry || typeof entry !== "object") {
+          return;
+        }
+
+        const candidate = entry as Record<string, unknown>;
+        if (typeof candidate.id === "string" && candidate.id.trim()) {
+          roomIds.add(candidate.id.trim());
+        }
+      });
+    });
+
+    this.roomIdCache.set(orgId, {
+      updatedAt: now,
+      roomIds,
+    });
+
+    return roomIds;
   }
 
   private isValidEvent(event: Partial<ScannerLocationEvent>): event is ScannerLocationEvent {

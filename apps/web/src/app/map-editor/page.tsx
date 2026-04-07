@@ -16,6 +16,9 @@ const MapEditorCanvas = dynamic(
   { ssr: false },
 );
 
+const MAX_MAP_PAYLOAD_BYTES = 5 * 1024 * 1024;
+const utf8Encoder = new TextEncoder();
+
 function makeId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -46,6 +49,10 @@ function readFileAsDataUrl(file: File) {
     reader.onerror = () => reject(reader.error ?? new Error("Could not read file"));
     reader.readAsDataURL(file);
   });
+}
+
+function bytesToMegabytes(bytes: number) {
+  return bytes / (1024 * 1024);
 }
 
 export default function MapEditorPage() {
@@ -183,24 +190,41 @@ export default function MapEditorPage() {
   async function saveMap() {
     try {
       setIsSaving(true);
+
+      const payload = {
+        id: mapId ?? makeId(),
+        name: mapName.trim() || "HQ Floor 1",
+        jsonConfig: {
+          schemaVersion: 2,
+          rooms,
+          props,
+          background,
+        },
+      };
+
+      const serializedPayload = JSON.stringify(payload);
+      const payloadBytes = utf8Encoder.encode(serializedPayload).length;
+      if (payloadBytes > MAX_MAP_PAYLOAD_BYTES) {
+        const sizeInMb = bytesToMegabytes(payloadBytes).toFixed(2);
+        const limitInMb = bytesToMegabytes(MAX_MAP_PAYLOAD_BYTES).toFixed(0);
+        setStatus(`Map payload is ${sizeInMb}MB, which exceeds the ${limitInMb}MB limit. Reduce SVG complexity or file size and try again.`);
+        return;
+      }
+
       const saved = await apiRequest<PersistedMap>("/maps", {
         method: "POST",
-        body: JSON.stringify({
-          id: mapId ?? makeId(),
-          name: mapName.trim() || "HQ Floor 1",
-          jsonConfig: {
-            schemaVersion: 2,
-            rooms,
-            props,
-            background,
-          },
-        }),
+        body: serializedPayload,
       });
 
       setMapId(saved.id);
       setMapName(saved.name);
       setStatus(`Saved ${saved.name} with ${rooms.length} room zone(s) and ${props.length} prop element(s).`);
-    } catch {
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("413")) {
+        setStatus("Map payload exceeded the API 5MB limit. Reduce SVG complexity or file size and try again.");
+        return;
+      }
+
       setStatus("Failed to save map. Verify API connectivity and permissions.");
     } finally {
       setIsSaving(false);
@@ -208,13 +232,16 @@ export default function MapEditorPage() {
   }
 
   async function importSvg(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    const inputElement = event.currentTarget;
+    const file = inputElement.files?.[0];
     if (!file) {
+      inputElement.value = "";
       return;
     }
 
     if (!file.type.includes("svg")) {
       setStatus("Only SVG files are supported for floor-plan background.");
+      inputElement.value = "";
       return;
     }
 
@@ -233,7 +260,7 @@ export default function MapEditorPage() {
     } catch {
       setStatus("Could not read SVG file. Try another file and re-import.");
     } finally {
-      event.currentTarget.value = "";
+      inputElement.value = "";
     }
   }
 

@@ -45,7 +45,6 @@ export default function DashboardPage() {
   const locationsRecord = useLocationStore((state) => state.locations);
   const setLocations = useLocationStore((state) => state.setLocations);
   const upsertLocation = useLocationStore((state) => state.upsertLocation);
-  const removeLocation = useLocationStore((state) => state.removeLocation);
   const addToast = useToastStore((state) => state.addToast);
 
   const [isBootstrapping, setIsBootstrapping] = useState(true);
@@ -61,7 +60,6 @@ export default function DashboardPage() {
   const [disconnectPings, setDisconnectPings] = useState<DisconnectPing[]>([]);
   const spawnedPlayerRef = useRef<Record<string, boolean>>({});
   const employeeEmailSetRef = useRef<Set<string>>(new Set());
-  const disconnectRemovalTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const [tags, setTags] = useState<TagDeviceSummary[]>([]);
   const [tagStatus, setTagStatus] = useState<string | null>(null);
@@ -70,6 +68,8 @@ export default function DashboardPage() {
   const [newTagRoomId, setNewTagRoomId] = useState("");
   const [isAddingTag, setIsAddingTag] = useState(false);
   const [isRefreshingTags, setIsRefreshingTags] = useState(false);
+  const [disconnectingEmployeeId, setDisconnectingEmployeeId] = useState<string | null>(null);
+  const [presenceActionStatus, setPresenceActionStatus] = useState<string | null>(null);
 
   const roomLabelById = useMemo(
     () => new Map(mapRooms.map((room) => [room.id, room.label])),
@@ -92,16 +92,6 @@ export default function DashboardPage() {
 
   const canManageLiveMap = user?.role === "employee";
   const canManageTags = user?.role === "admin" || user?.role === "manager";
-
-  function clearDisconnectRemovalTimer(employeeId: string) {
-    const timer = disconnectRemovalTimersRef.current[employeeId];
-    if (!timer) {
-      return;
-    }
-
-    clearTimeout(timer);
-    delete disconnectRemovalTimersRef.current[employeeId];
-  }
 
   function initializeTagForms(tagDevices: TagDeviceSummary[]) {
     setTags(tagDevices);
@@ -182,7 +172,7 @@ export default function DashboardPage() {
 
         if (active) {
           employeeEmailSetRef.current = employeeEmails;
-          setLocations(current.filter((location) => employeeEmails.has(location.employeeId) && location.connected));
+          setLocations(current.filter((location) => employeeEmails.has(location.employeeId)));
           setDisconnectPings([]);
           initializeTagForms(tagDevices);
           hydrateMapFromList(maps);
@@ -206,7 +196,11 @@ export default function DashboardPage() {
           locationSocket = socket;
           socket.on("connect", () => {
             socket.emit("join", { room: `org:${orgId}:locations` });
-            setSocketState("connected");
+          });
+          socket.on("joined", (room: string) => {
+            if (room === `org:${orgId}:locations`) {
+              setSocketState("connected");
+            }
           });
           socket.on("disconnect", () => {
             setSocketState("disconnected");
@@ -217,7 +211,6 @@ export default function DashboardPage() {
             }
 
             if (location.connected) {
-              clearDisconnectRemovalTimer(location.employeeId);
               setDisconnectPings((prev) => prev.filter((ping) => ping.employeeId !== location.employeeId));
               upsertLocation(location);
               return;
@@ -235,13 +228,6 @@ export default function DashboardPage() {
 
               return [...prev.filter((ping) => ping.employeeId !== location.employeeId), nextPing];
             });
-
-            clearDisconnectRemovalTimer(location.employeeId);
-            disconnectRemovalTimersRef.current[location.employeeId] = setTimeout(() => {
-              removeLocation(location.employeeId);
-              setDisconnectPings((prev) => prev.filter((ping) => ping.employeeId !== location.employeeId));
-              delete disconnectRemovalTimersRef.current[location.employeeId];
-            }, DISCONNECT_PING_DURATION_MS);
           });
           socket.on("presence:joined", (presence: EmployeePresenceEvent) => {
             if (!employeeEmailSetRef.current.has(presence.employeeId)) {
@@ -292,17 +278,32 @@ export default function DashboardPage() {
       active = false;
       if (locationSocket) {
         locationSocket.off("connect");
+        locationSocket.off("joined");
         locationSocket.off("disconnect");
         locationSocket.off("location:update");
         locationSocket.off("presence:joined");
         locationSocket.off("presence:left");
         locationSocket.disconnect();
       }
-
-      Object.values(disconnectRemovalTimersRef.current).forEach((timer) => clearTimeout(timer));
-      disconnectRemovalTimersRef.current = {};
     };
-  }, [addToast, removeLocation, router, setLocations, setUser, upsertLocation, user]);
+  }, [addToast, router, setLocations, setUser, upsertLocation, user]);
+
+  useEffect(() => {
+    if (disconnectPings.length === 0) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      const now = Date.now();
+      setDisconnectPings((previous) =>
+        previous.filter((ping) => now - ping.startedAt < DISCONNECT_PING_DURATION_MS),
+      );
+    }, 200);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [disconnectPings.length]);
 
   useEffect(() => {
     if (!user || user.role !== "employee" || mapRooms.length === 0) {
@@ -387,6 +388,27 @@ export default function DashboardPage() {
     }
   }
 
+  async function disconnectEmployeeAsManager(employeeId: string) {
+    const trimmed = employeeId.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    try {
+      setDisconnectingEmployeeId(trimmed);
+      const updated = await apiRequest<LastKnownLocation>(`/locations/disconnect/${encodeURIComponent(trimmed)}`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      upsertLocation(updated);
+      setPresenceActionStatus(`Disconnected ${trimmed}.`);
+    } catch {
+      setPresenceActionStatus(`Could not disconnect ${trimmed}.`);
+    } finally {
+      setDisconnectingEmployeeId(null);
+    }
+  }
+
   if (user && user.role === "employee") {
     return (
       <AppContainer>
@@ -458,6 +480,37 @@ export default function DashboardPage() {
               disconnectPings={disconnectPings}
             />
           </GlassCard>
+
+          {canManageTags ? (
+            <GlassCard className="space-y-3" variant="soft">
+              <p className="font-data text-xs uppercase tracking-[0.2em] text-text-dim">Connected Employees</p>
+              {connectedLocations.length > 0 ? (
+                <div className="space-y-2">
+                  {connectedLocations.map((location) => (
+                    <div key={location.employeeId} className="rounded-xl border border-outline/60 bg-panel-strong/50 p-3 text-sm">
+                      <p className="font-semibold">{location.employeeId}</p>
+                      <p className="mt-1 text-xs text-text-dim">Room: {formatRoomLabel(location.roomId)}</p>
+                      <p className="mt-1 text-xs text-text-dim">Updated: {new Date(location.ts).toLocaleString()}</p>
+                      <AppButton
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="mt-2"
+                        onClick={() => void disconnectEmployeeAsManager(location.employeeId)}
+                        disabled={disconnectingEmployeeId === location.employeeId}
+                        loading={disconnectingEmployeeId === location.employeeId}
+                      >
+                        Remove From Presence
+                      </AppButton>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-text-dim">No connected employees.</p>
+              )}
+              {presenceActionStatus ? <p className="text-xs text-text-dim">{presenceActionStatus}</p> : null}
+            </GlassCard>
+          ) : null}
 
           {disconnectedLocations.length > 0 ? (
             <GlassCard className="space-y-3" variant="soft">
