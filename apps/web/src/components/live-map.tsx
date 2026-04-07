@@ -16,6 +16,15 @@ type LiveMapProps = {
   currentPlayerId?: string | null;
   genderByEmployee?: Record<string, UserGender>;
   onMovePlayer?: (payload: LocationMoveRequest) => Promise<void> | void;
+  disconnectPings?: DisconnectPing[];
+};
+
+type DisconnectPing = {
+  employeeId: string;
+  roomId: string;
+  x?: number;
+  y?: number;
+  startedAt: number;
 };
 
 const BASE_WIDTH = 960;
@@ -26,6 +35,7 @@ const ZOOM_STEP = 1.06;
 const BLIP_RADIUS = 6;
 const MOVE_SPEED_PX_PER_SEC = 130;
 const MOVE_SYNC_INTERVAL_MS = 120;
+const DISCONNECT_PING_DURATION_MS = 900;
 
 type LiveMapViewport = {
   x: number;
@@ -160,6 +170,7 @@ export function LiveMap({
   currentPlayerId = null,
   genderByEmployee = {},
   onMovePlayer,
+  disconnectPings = [],
 }: LiveMapProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<any>(null);
@@ -176,6 +187,7 @@ export function LiveMap({
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [viewport, setViewport] = useState<LiveMapViewport>({ x: 0, y: 0, scale: 1 });
   const [blipOverrides, setBlipOverrides] = useState<Record<string, BlipOverride>>({});
+  const [animationNow, setAnimationNow] = useState(() => Date.now());
 
   useEffect(() => {
     const node = wrapperRef.current;
@@ -320,12 +332,23 @@ export function LiveMap({
       const next: Record<string, BlipOverride> = {};
 
       Object.entries(prev).forEach(([employeeId, value]) => {
-        if (employeeId === currentPlayerId && roomLookup.has(value.roomId)) {
+        const location = mappedById.get(employeeId);
+
+        if (employeeId === currentPlayerId) {
+          if (!roomLookup.has(value.roomId)) {
+            changed = true;
+            return;
+          }
+
+          if (location && location.roomId !== value.roomId) {
+            changed = true;
+            return;
+          }
+
           next[employeeId] = value;
           return;
         }
 
-        const location = mappedById.get(employeeId);
         if (!location) {
           changed = true;
           return;
@@ -400,6 +423,61 @@ export function LiveMap({
 
   const unplacedCount = locations.filter((location) => !roomLookup.has(location.roomId)).length;
   const stageScale = fitScale * viewport.scale;
+
+  useEffect(() => {
+    if (disconnectPings.length === 0) {
+      return;
+    }
+
+    let animationFrame = 0;
+    const update = () => {
+      setAnimationNow(Date.now());
+      animationFrame = requestAnimationFrame(update);
+    };
+
+    animationFrame = requestAnimationFrame(update);
+    return () => {
+      cancelAnimationFrame(animationFrame);
+    };
+  }, [disconnectPings.length]);
+
+  const activeDisconnectPings = useMemo(() => {
+    if (disconnectPings.length === 0) {
+      return [];
+    }
+
+    const locationByEmployee = new Map(mappedLocations.map((location) => [location.employeeId, location]));
+    const resolved: Array<{ employeeId: string; x: number; y: number; progress: number }> = [];
+
+    disconnectPings.forEach((ping) => {
+      const progress = clamp((animationNow - ping.startedAt) / DISCONNECT_PING_DURATION_MS, 0, 1);
+      if (progress >= 1) {
+        return;
+      }
+
+      const location = locationByEmployee.get(ping.employeeId);
+      const room = roomLookup.get(ping.roomId) ?? (location ? roomLookup.get(location.roomId) : null);
+      if (!room) {
+        return;
+      }
+
+      const bounds = getRoomBlipBounds(room);
+      const fallback = defaultBlipPositions.get(ping.employeeId) ?? {
+        roomId: room.id,
+        x: clamp(room.x + room.w / 2, bounds.minX, bounds.maxX),
+        y: clamp(room.y + room.h / 2, bounds.minY, bounds.maxY),
+      };
+
+      resolved.push({
+        employeeId: ping.employeeId,
+        x: typeof ping.x === "number" && Number.isFinite(ping.x) ? clampToMapX(ping.x) : fallback.x,
+        y: typeof ping.y === "number" && Number.isFinite(ping.y) ? clampToMapY(ping.y) : fallback.y,
+        progress,
+      });
+    });
+
+    return resolved;
+  }, [animationNow, defaultBlipPositions, disconnectPings, mappedLocations, roomLookup]);
 
   function setClampedViewport(next: LiveMapViewport) {
     setViewport((prev) => {
@@ -537,12 +615,11 @@ export function LiveMap({
           const rawY = clampToMapY(activePoint.y + normalizedY * MOVE_SPEED_PX_PER_SEC * deltaSec);
 
           const containingRoom = findRoomContainingPoint(roomsRef.current, rawX, rawY);
-          const targetRoom = containingRoom ?? activeRoom;
-          const targetBounds = containingRoom ? getRoomBlipBounds(targetRoom) : null;
+          const targetBounds = containingRoom ? getRoomBlipBounds(containingRoom) : null;
 
           const nextX = targetBounds ? clamp(rawX, targetBounds.minX, targetBounds.maxX) : rawX;
           const nextY = targetBounds ? clamp(rawY, targetBounds.minY, targetBounds.maxY) : rawY;
-          const nextRoomId = containingRoom?.id ?? activeRoom.id;
+          const nextRoomId = containingRoom?.id ?? activePoint.roomId;
 
           setBlipOverrides((prev) => {
             const next = {
@@ -744,8 +821,8 @@ export function LiveMap({
                     const fallbackRoom = roomLookupRef.current.get(fallbackRoomId);
                     const resolvedRoom = droppedRoom ?? fallbackRoom;
                     const resolvedBounds = resolvedRoom ? getRoomBlipBounds(resolvedRoom) : null;
-                    const nextX = resolvedBounds ? clamp(rawX, resolvedBounds.minX, resolvedBounds.maxX) : rawX;
-                    const nextY = resolvedBounds ? clamp(rawY, resolvedBounds.minY, resolvedBounds.maxY) : rawY;
+                    const nextX = droppedRoom && resolvedBounds ? clamp(rawX, resolvedBounds.minX, resolvedBounds.maxX) : rawX;
+                    const nextY = droppedRoom && resolvedBounds ? clamp(rawY, resolvedBounds.minY, resolvedBounds.maxY) : rawY;
                     const nextRoomId = droppedRoom?.id ?? fallbackRoomId;
 
                     if (!nextRoomId) {
@@ -795,6 +872,34 @@ export function LiveMap({
                   text={location.employeeId}
                   fontSize={11}
                   fill={style.text}
+                />
+              </Fragment>
+            );
+          })}
+
+          {activeDisconnectPings.map((ping) => {
+            const outerOpacity = Math.max(0, 0.85 * (1 - ping.progress));
+            const innerOpacity = Math.max(0, 0.68 * (1 - ping.progress));
+
+            return (
+              <Fragment key={`${ping.employeeId}-disconnect-ping`}>
+                <Circle
+                  x={ping.x}
+                  y={ping.y}
+                  radius={BLIP_RADIUS + 8 + ping.progress * 24}
+                  fill="rgba(248,113,113,0.03)"
+                  stroke={`rgba(248,113,113,${outerOpacity.toFixed(3)})`}
+                  strokeWidth={2}
+                  listening={false}
+                />
+                <Circle
+                  x={ping.x}
+                  y={ping.y}
+                  radius={BLIP_RADIUS + 3 + ping.progress * 12}
+                  fill="rgba(248,113,113,0.02)"
+                  stroke={`rgba(254,202,202,${innerOpacity.toFixed(3)})`}
+                  strokeWidth={1.4}
+                  listening={false}
                 />
               </Fragment>
             );

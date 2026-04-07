@@ -1,19 +1,26 @@
 import { BadRequestException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import type { LastKnownLocation, ScannerLocationEvent } from "@ignara/sharedtypes";
+import type { EmployeePresenceEvent, LastKnownLocation, ScannerLocationEvent } from "@ignara/sharedtypes";
 import Redis from "ioredis";
 import mqtt, { MqttClient } from "mqtt";
 import { Repository } from "typeorm";
 import { MapEntity } from "../entities/map.entity";
+import { UserEntity } from "../entities/user.entity";
 import { LocationsGateway } from "./locations.gateway";
 
 const DEFAULT_SIGNAL_TIMEOUT_MS = 30_000;
 const DEFAULT_STALE_SCAN_INTERVAL_MS = 5_000;
 const DEFAULT_BEACON_CACHE_TTL_MS = 10_000;
+const DEFAULT_EMPLOYEE_ROLE_CACHE_TTL_MS = 10_000;
 
 type BeaconCacheValue = {
   updatedAt: number;
   roomByBeaconId: Record<string, string>;
+};
+
+type EmployeeRoleCacheValue = {
+  updatedAt: number;
+  employeeIds: Set<string>;
 };
 
 @Injectable()
@@ -23,14 +30,20 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
   private readonly mqttClient: MqttClient;
   private staleScanTimer?: NodeJS.Timeout;
   private readonly beaconCache = new Map<string, BeaconCacheValue>();
+  private readonly employeeRoleCache = new Map<string, EmployeeRoleCacheValue>();
   private readonly staleSignalTimeoutMs = Number(process.env.LOCATION_SIGNAL_TIMEOUT_MS ?? DEFAULT_SIGNAL_TIMEOUT_MS);
   private readonly staleScanIntervalMs = Number(process.env.LOCATION_STALE_SCAN_INTERVAL_MS ?? DEFAULT_STALE_SCAN_INTERVAL_MS);
   private readonly beaconCacheTtlMs = Number(process.env.LOCATION_BEACON_CACHE_TTL_MS ?? DEFAULT_BEACON_CACHE_TTL_MS);
+  private readonly employeeRoleCacheTtlMs = Number(
+    process.env.LOCATION_EMPLOYEE_ROLE_CACHE_TTL_MS ?? DEFAULT_EMPLOYEE_ROLE_CACHE_TTL_MS,
+  );
 
   constructor(
     private readonly gateway: LocationsGateway,
     @InjectRepository(MapEntity)
     private readonly mapsRepository: Repository<MapEntity>,
+    @InjectRepository(UserEntity)
+    private readonly usersRepository: Repository<UserEntity>,
   ) {
     this.redis = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379");
     this.mqttClient = mqtt.connect(process.env.MQTT_URL ?? "mqtt://localhost:1883");
@@ -102,7 +115,10 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
-    return parsed.sort((a, b) => b.ts - a.ts);
+    const employeeIds = await this.getEmployeeEmailSet(orgId);
+    return parsed
+      .filter((location) => employeeIds.has(location.employeeId))
+      .sort((a, b) => b.ts - a.ts);
   }
 
   async movePlayer(input: {
@@ -126,22 +142,22 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
       employeeId: input.employeeId,
       roomId,
       scannerId: previous?.scannerId ?? "manual-input",
-      connected: previous?.connected ?? false,
-      lastEvent: previous?.lastEvent ?? "enter",
+      connected: true,
+      lastEvent: "enter",
       x: Math.round(input.x),
       y: Math.round(input.y),
       movementSource: "wasd",
-      signalSource: previous?.signalSource ?? "manual",
+      signalSource: "manual",
       beaconId: previous?.beaconId,
       beaconRssi: previous?.beaconRssi,
       proximityScore: previous?.proximityScore,
-      signalLostAt: previous?.signalLostAt,
-      disconnectedAt: previous?.disconnectedAt,
+      signalLostAt: undefined,
+      disconnectedAt: undefined,
       ts,
     };
 
     await this.redis.set(key, JSON.stringify(location));
-    this.gateway.emitOrgLocation(input.orgId, location);
+    await this.emitLocationIfEmployee(location, previous, "manual");
     return location;
   }
 
@@ -184,8 +200,7 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
     };
 
     await this.redis.set(key, JSON.stringify(location));
-
-    this.gateway.emitOrgLocation(orgId, location);
+    await this.emitLocationIfEmployee(location, previous, "scanner");
   }
 
   private async markStaleLocations() {
@@ -230,9 +245,59 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
         };
 
         await this.redis.set(keys[index], JSON.stringify(staleLocation));
-        this.gateway.emitOrgLocation(staleLocation.orgId, staleLocation);
+        await this.emitLocationIfEmployee(staleLocation, current, "stale");
       }),
     );
+  }
+
+  private async emitLocationIfEmployee(
+    location: LastKnownLocation,
+    previous: LastKnownLocation | null = null,
+    reason: EmployeePresenceEvent["reason"] = "scanner",
+  ) {
+    const employeeIds = await this.getEmployeeEmailSet(location.orgId);
+    if (!employeeIds.has(location.employeeId)) {
+      return;
+    }
+
+    this.gateway.emitOrgLocation(location.orgId, location);
+
+    const wasConnected = previous?.connected ?? false;
+    if (location.connected === wasConnected) {
+      return;
+    }
+
+    this.gateway.emitOrgPresence(location.orgId, {
+      orgId: location.orgId,
+      employeeId: location.employeeId,
+      roomId: location.roomId,
+      action: location.connected ? "joined" : "left",
+      ts: location.ts,
+      reason,
+    });
+  }
+
+  private async getEmployeeEmailSet(orgId: string): Promise<Set<string>> {
+    const now = Date.now();
+    const cached = this.employeeRoleCache.get(orgId);
+    if (cached && now - cached.updatedAt < this.employeeRoleCacheTtlMs) {
+      return cached.employeeIds;
+    }
+
+    const rows = await this.usersRepository
+      .createQueryBuilder("user")
+      .select("user.email", "email")
+      .where("user.orgId = :orgId", { orgId })
+      .andWhere("user.role = :role", { role: "employee" })
+      .getRawMany<{ email: string }>();
+
+    const employeeIds = new Set(rows.map((entry) => entry.email));
+    this.employeeRoleCache.set(orgId, {
+      updatedAt: now,
+      employeeIds,
+    });
+
+    return employeeIds;
   }
 
   private locationKey(orgId: string, employeeId: string) {

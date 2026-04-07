@@ -27,7 +27,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       setUser(response.user);
-      router.push("/dashboard");
+      router.push(response.user.role === "employee" ? "/employee-dashboard" : "/dashboard");
     } catch (caught) {
       if (caught instanceof Error && caught.message.includes("Cannot reach API")) {
         setError(

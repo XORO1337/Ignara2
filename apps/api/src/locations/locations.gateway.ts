@@ -1,5 +1,5 @@
 import { Injectable, OnModuleDestroy } from "@nestjs/common";
-import type { LastKnownLocation } from "@ignara/sharedtypes";
+import type { EmployeePresenceEvent, LastKnownLocation } from "@ignara/sharedtypes";
 import { Server } from "socket.io";
 import { Socket } from "socket.io";
 import { validateCorsOrigin } from "../common/cors-origin";
@@ -44,5 +44,14 @@ export class LocationsGateway implements OnModuleDestroy {
     }
 
     this.server.of("/locations").to(`org:${orgId}:locations`).emit("location:update", location);
+  }
+
+  emitOrgPresence(orgId: string, payload: EmployeePresenceEvent) {
+    if (!this.server) {
+      return;
+    }
+
+    const eventName = payload.action === "joined" ? "presence:joined" : "presence:left";
+    this.server.of("/locations").to(`org:${orgId}:locations`).emit(eventName, payload);
   }
 }

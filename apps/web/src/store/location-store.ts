@@ -7,6 +7,7 @@ type LocationState = {
   locations: Record<string, LastKnownLocation>;
   setLocations: (locations: LastKnownLocation[]) => void;
   upsertLocation: (location: LastKnownLocation) => void;
+  removeLocation: (employeeId: string) => void;
 };
 
 export const useLocationStore = create<LocationState>((set) => ({
@@ -22,4 +23,14 @@ export const useLocationStore = create<LocationState>((set) => ({
         [location.employeeId]: location,
       },
     })),
+  removeLocation: (employeeId) =>
+    set((state) => {
+      if (!state.locations[employeeId]) {
+        return state;
+      }
+
+      const next = { ...state.locations };
+      delete next[employeeId];
+      return { locations: next };
+    }),
 }));

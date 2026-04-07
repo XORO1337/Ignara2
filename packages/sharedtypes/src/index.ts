@@ -34,6 +34,75 @@ export interface LastKnownLocation {
   ts: number;
 }
 
+export interface EmployeePresenceEvent {
+  orgId: string;
+  employeeId: string;
+  roomId: string;
+  action: "joined" | "left";
+  ts: number;
+  reason?: "manual" | "scanner" | "stale";
+}
+
+export interface ChatMessage {
+  id: string;
+  orgId: string;
+  senderId: string;
+  text: string;
+  roomId?: string;
+  ts: number;
+}
+
+export interface ChatJoinPayload {
+  orgId: string;
+  employeeId: string;
+}
+
+export interface ChatSendPayload {
+  text: string;
+  roomId?: string;
+}
+
+export type VoiceSignal =
+  | {
+      type: "offer";
+      sdp: string;
+    }
+  | {
+      type: "answer";
+      sdp: string;
+    }
+  | {
+      type: "ice-candidate";
+      candidate: string;
+      sdpMid?: string;
+      sdpMLineIndex?: number;
+    };
+
+export interface VoiceJoinPayload {
+  orgId: string;
+  employeeId: string;
+  roomId: string;
+}
+
+export interface VoiceSignalPayload {
+  to: string;
+  signal: VoiceSignal;
+}
+
+export interface VoicePeersPayload {
+  roomId: string;
+  peers: string[];
+}
+
+export interface VoicePeerEvent {
+  employeeId: string;
+}
+
+export interface VoiceInboundSignalPayload {
+  from: string;
+  signal: VoiceSignal;
+}
+
 export interface NotificationPayload {
   orgId: string;
   senderId: string;

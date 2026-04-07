@@ -4,14 +4,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "../store/auth-store";
+import { ToastFeed } from "./toast-feed";
 import { ThemeToggle } from "./theme-toggle";
-
-const baseLinks = [
-  { href: "/", label: "Home" },
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/device-config", label: "Device Config" },
-  { href: "/notifications", label: "Notifications" },
-];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -23,6 +17,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const hydrateSession = useAuthStore((state) => state.hydrateSession);
   const logout = useAuthStore((state) => state.logout);
   const canAccessMapEditor = user?.role === "admin" || user?.isDevAllowlisted === true;
+  const dashboardHref = user?.role === "employee" ? "/employee-dashboard" : "/dashboard";
 
   useEffect(() => {
     if (!hydrationAttempted) {
@@ -40,7 +35,12 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }
 
-  const links = [...baseLinks];
+  const links = [
+    { href: "/", label: "Home" },
+    { href: dashboardHref, label: "Dashboard" },
+    { href: "/device-config", label: "Device Config" },
+    { href: "/notifications", label: "Notifications" },
+  ];
   if (canAccessMapEditor) {
     links.splice(3, 0, { href: "/map-editor", label: "Map Editor" });
   }
@@ -107,6 +107,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       </header>
 
       {children}
+      <ToastFeed />
     </div>
   );
 }

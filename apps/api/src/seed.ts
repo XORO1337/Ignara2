@@ -42,6 +42,13 @@ async function seed() {
       orgId: org.id,
       password: hashPassword("employee123"),
     },
+    {
+      email: "employee2@ignara.local",
+      role: "employee",
+      gender: "male",
+      orgId: org.id,
+      password: hashPassword("employee123"),
+    },
   ];
 
   for (const candidate of seedUsers) {

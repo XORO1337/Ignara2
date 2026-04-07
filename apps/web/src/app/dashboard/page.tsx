@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
-import type { LastKnownLocation, RoomZone, TagDeviceSummary, UserGender } from "@ignara/sharedtypes";
+import { useRouter } from "next/navigation";
+import type { EmployeePresenceEvent, LastKnownLocation, RoomZone, TagDeviceSummary, UserGender } from "@ignara/sharedtypes";
 import type { Socket } from "socket.io-client";
 import { apiRequest } from "../../lib/api";
 import { parseMapEditorData, pickActiveMap, type MapBackgroundConfig, type MapPropElement } from "../../lib/map-config";
 import { createLocationSocket } from "../../lib/socket";
 import { useAuthStore, type SessionUser } from "../../store/auth-store";
 import { useLocationStore } from "../../store/location-store";
+import { useToastStore } from "../../store/toast-store";
 import { AppButton, AppContainer, AppInput, GlassCard, MetricCard, StatusPill } from "../../components/ui";
 
 const LiveMap = dynamic(
@@ -26,12 +28,25 @@ type OrgUser = {
   tagDeviceId?: string | null;
 };
 
+type DisconnectPing = {
+  employeeId: string;
+  roomId: string;
+  x?: number;
+  y?: number;
+  startedAt: number;
+};
+
+const DISCONNECT_PING_DURATION_MS = 900;
+
 export default function DashboardPage() {
+  const router = useRouter();
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
   const locationsRecord = useLocationStore((state) => state.locations);
   const setLocations = useLocationStore((state) => state.setLocations);
   const upsertLocation = useLocationStore((state) => state.upsertLocation);
+  const removeLocation = useLocationStore((state) => state.removeLocation);
+  const addToast = useToastStore((state) => state.addToast);
 
   const [isBootstrapping, setIsBootstrapping] = useState(true);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
@@ -43,7 +58,10 @@ export default function DashboardPage() {
   const [mapProps, setMapProps] = useState<MapPropElement[]>([]);
   const [mapBackground, setMapBackground] = useState<MapBackgroundConfig | null>(null);
   const [userGenderMap, setUserGenderMap] = useState<Record<string, UserGender>>({});
+  const [disconnectPings, setDisconnectPings] = useState<DisconnectPing[]>([]);
   const spawnedPlayerRef = useRef<Record<string, boolean>>({});
+  const employeeEmailSetRef = useRef<Set<string>>(new Set());
+  const disconnectRemovalTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   const [tags, setTags] = useState<TagDeviceSummary[]>([]);
   const [tagStatus, setTagStatus] = useState<string | null>(null);
@@ -66,14 +84,24 @@ export default function DashboardPage() {
     return roomLabelById.get(roomId) ?? roomId;
   }
 
-  const locations = Object.values(locationsRecord);
+  const locations = Object.values(locationsRecord).filter((location) => employeeEmailSetRef.current.has(location.employeeId));
   const connectedLocations = locations.filter((location) => location.connected);
   const disconnectedLocations = locations.filter((location) => !location.connected);
   const activeRoomCount = new Set(connectedLocations.map((location) => location.roomId)).size;
   const unmappedConnectedCount = connectedLocations.filter((location) => !mapRooms.some((room) => room.id === location.roomId)).length;
 
-  const canManageLiveMap = Boolean(user);
+  const canManageLiveMap = user?.role === "employee";
   const canManageTags = user?.role === "admin" || user?.role === "manager";
+
+  function clearDisconnectRemovalTimer(employeeId: string) {
+    const timer = disconnectRemovalTimersRef.current[employeeId];
+    if (!timer) {
+      return;
+    }
+
+    clearTimeout(timer);
+    delete disconnectRemovalTimersRef.current[employeeId];
+  }
 
   function initializeTagForms(tagDevices: TagDeviceSummary[]) {
     setTags(tagDevices);
@@ -104,6 +132,16 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+    if (!user) {
+      return;
+    }
+
+    if (user.role === "employee") {
+      router.replace("/employee-dashboard");
+    }
+  }, [router, user]);
+
+  useEffect(() => {
     let active = true;
     let orgId = "";
     let locationSocket: Socket | null = null;
@@ -124,7 +162,13 @@ export default function DashboardPage() {
           throw new Error("Missing session");
         }
 
+        if (sessionUser.role === "employee") {
+          router.replace("/employee-dashboard");
+          return;
+        }
+
         orgId = sessionUser.orgId;
+        const viewerEmployeeId = sessionUser.email;
         const managerView = sessionUser.role === "admin" || sessionUser.role === "manager";
 
         const [current, tagDevices, maps, users] = await Promise.all([
@@ -134,13 +178,19 @@ export default function DashboardPage() {
           apiRequest<OrgUser[]>("/users"),
         ]);
 
+        const employeeEmails = new Set(users.filter((entry) => entry.role === "employee").map((entry) => entry.email));
+
         if (active) {
-          setLocations(current);
+          employeeEmailSetRef.current = employeeEmails;
+          setLocations(current.filter((location) => employeeEmails.has(location.employeeId) && location.connected));
+          setDisconnectPings([]);
           initializeTagForms(tagDevices);
           hydrateMapFromList(maps);
           setUserGenderMap(
             users.reduce<Record<string, UserGender>>((acc, entry) => {
-              acc[entry.email] = entry.gender ?? "other";
+              if (entry.role === "employee") {
+                acc[entry.email] = entry.gender ?? "other";
+              }
               return acc;
             }, {}),
           );
@@ -161,8 +211,67 @@ export default function DashboardPage() {
           socket.on("disconnect", () => {
             setSocketState("disconnected");
           });
+          socket.on("location:update", (location: LastKnownLocation) => {
+            if (!employeeEmailSetRef.current.has(location.employeeId)) {
+              return;
+            }
+
+            if (location.connected) {
+              clearDisconnectRemovalTimer(location.employeeId);
+              setDisconnectPings((prev) => prev.filter((ping) => ping.employeeId !== location.employeeId));
+              upsertLocation(location);
+              return;
+            }
+
+            upsertLocation(location);
+            setDisconnectPings((prev) => {
+              const nextPing: DisconnectPing = {
+                employeeId: location.employeeId,
+                roomId: location.roomId,
+                x: location.x,
+                y: location.y,
+                startedAt: Date.now(),
+              };
+
+              return [...prev.filter((ping) => ping.employeeId !== location.employeeId), nextPing];
+            });
+
+            clearDisconnectRemovalTimer(location.employeeId);
+            disconnectRemovalTimersRef.current[location.employeeId] = setTimeout(() => {
+              removeLocation(location.employeeId);
+              setDisconnectPings((prev) => prev.filter((ping) => ping.employeeId !== location.employeeId));
+              delete disconnectRemovalTimersRef.current[location.employeeId];
+            }, DISCONNECT_PING_DURATION_MS);
+          });
+          socket.on("presence:joined", (presence: EmployeePresenceEvent) => {
+            if (!employeeEmailSetRef.current.has(presence.employeeId)) {
+              return;
+            }
+
+            if (presence.employeeId === viewerEmployeeId) {
+              return;
+            }
+
+            addToast({
+              message: `${presence.employeeId} joined ${presence.roomId}`,
+              tone: "success",
+            });
+          });
+          socket.on("presence:left", (presence: EmployeePresenceEvent) => {
+            if (!employeeEmailSetRef.current.has(presence.employeeId)) {
+              return;
+            }
+
+            if (presence.employeeId === viewerEmployeeId) {
+              return;
+            }
+
+            addToast({
+              message: `${presence.employeeId} left ${presence.roomId}`,
+              tone: "warning",
+            });
+          });
           socket.connect();
-          socket.on("location:update", upsertLocation);
         }
       } catch (error) {
         if (active) {
@@ -184,14 +293,19 @@ export default function DashboardPage() {
       if (locationSocket) {
         locationSocket.off("connect");
         locationSocket.off("disconnect");
-        locationSocket.off("location:update", upsertLocation);
+        locationSocket.off("location:update");
+        locationSocket.off("presence:joined");
+        locationSocket.off("presence:left");
         locationSocket.disconnect();
       }
+
+      Object.values(disconnectRemovalTimersRef.current).forEach((timer) => clearTimeout(timer));
+      disconnectRemovalTimersRef.current = {};
     };
-  }, [setLocations, setUser, upsertLocation, user]);
+  }, [addToast, removeLocation, router, setLocations, setUser, upsertLocation, user]);
 
   useEffect(() => {
-    if (!user || mapRooms.length === 0) {
+    if (!user || user.role !== "employee" || mapRooms.length === 0) {
       return;
     }
 
@@ -273,6 +387,16 @@ export default function DashboardPage() {
     }
   }
 
+  if (user && user.role === "employee") {
+    return (
+      <AppContainer>
+        <GlassCard>
+          <p className="text-sm text-text-dim">Redirecting to the employee dashboard...</p>
+        </GlassCard>
+      </AppContainer>
+    );
+  }
+
   return (
     <AppContainer className="space-y-5">
       <GlassCard variant="elevated">
@@ -326,11 +450,12 @@ export default function DashboardPage() {
               locations={locations}
               mapProps={mapProps}
               background={mapBackground}
-              interactive={canManageLiveMap}
+              interactive={Boolean(canManageLiveMap)}
               mapStorageKey={activeMapId && user ? `${user.orgId}:${activeMapId}` : null}
-              currentPlayerId={user?.email ?? null}
+              currentPlayerId={canManageLiveMap && user ? user.email : null}
               genderByEmployee={userGenderMap}
-              onMovePlayer={user ? moveCurrentPlayer : undefined}
+              onMovePlayer={canManageLiveMap && user ? moveCurrentPlayer : undefined}
+              disconnectPings={disconnectPings}
             />
           </GlassCard>
 

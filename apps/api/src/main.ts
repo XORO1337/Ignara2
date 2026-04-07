@@ -2,8 +2,10 @@ import { NestFactory } from "@nestjs/core";
 import type { INestApplication } from "@nestjs/common";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
+import { ChatGateway } from "./chat/chat.gateway";
 import { validateCorsOrigin } from "./common/cors-origin";
 import { LocationsGateway } from "./locations/locations.gateway";
+import { VoiceGateway } from "./voice/voice.gateway";
 
 function getErrorCode(error: unknown): string | undefined {
   if (!error || typeof error !== "object") {
@@ -52,6 +54,12 @@ async function bootstrap() {
 
   const locationsGateway = app.get(LocationsGateway);
   locationsGateway.initialize(app.getHttpServer());
+
+  const chatGateway = app.get(ChatGateway);
+  chatGateway.initialize(app.getHttpServer());
+
+  const voiceGateway = app.get(VoiceGateway);
+  voiceGateway.initialize(app.getHttpServer());
 
   const preferredPort = Number(process.env.PORT ?? 3001);
   const boundPort = await listenWithPortFallback(app, preferredPort);

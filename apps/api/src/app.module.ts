@@ -2,10 +2,12 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { AuthModule } from "./auth/auth.module";
+import { ChatModule } from "./chat/chat.module";
 import { HealthModule } from "./health/health.module";
 import { LocationsModule } from "./locations/locations.module";
 import { MapsModule } from "./maps/maps.module";
 import { NotificationsModule } from "./notifications/notifications.module";
+import { VoiceModule } from "./voice/voice.module";
 import { DevicesModule } from "./devices/devices.module";
 import { DeviceEntity } from "./entities/device.entity";
 import { MapEntity } from "./entities/map.entity";
@@ -46,11 +48,13 @@ const DEFAULT_DATABASE_URL = "postgresql://ignara:ignara123@localhost:5432/ignar
     }),
     UsersModule,
     AuthModule,
+    ChatModule,
     HealthModule,
     MapsModule,
     LocationsModule,
     NotificationsModule,
     DevicesModule,
+    VoiceModule,
   ],
 })
 export class AppModule {}

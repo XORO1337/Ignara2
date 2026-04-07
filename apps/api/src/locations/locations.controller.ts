@@ -31,7 +31,7 @@ export class LocationsController {
 
   @Post("move")
   @UseGuards(RolesGuard)
-  @Roles("admin", "manager", "employee")
+  @Roles("employee")
   move(
     @Req() request: Request & { user?: SessionUser },
     @Body() body: LocationMoveRequest,

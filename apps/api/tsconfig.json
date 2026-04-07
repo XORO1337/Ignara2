@@ -3,11 +3,8 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    "module": "CommonJS",
-    "paths": {
-      "@ignara/sharedtypes": ["packages/sharedtypes/dist/index.d.ts"],
-      "@ignara/sharedtypes/*": ["packages/sharedtypes/dist/*"]
-    },
+    "module": "node16",
+    "moduleResolution": "node16",
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "strictPropertyInitialization": false
