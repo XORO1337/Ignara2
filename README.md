@@ -18,6 +18,7 @@ Indoor location and notification platform built as a pnpm monorepo.
 ## Install
 
 ```bash
+npm install -g corepack
 corepack enable
 pnpm install
 ```
