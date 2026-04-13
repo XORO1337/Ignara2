@@ -418,6 +418,7 @@ export default function EmployeeDashboardPage() {
             genderByEmployee={userGenderMap}
             onMovePlayer={user ? moveCurrentPlayer : undefined}
             disconnectPings={disconnectPings}
+            autoFollowPlayer
           />
         </GlassCard>
 

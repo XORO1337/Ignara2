@@ -17,6 +17,7 @@ type LiveMapProps = {
   genderByEmployee?: Record<string, UserGender>;
   onMovePlayer?: (payload: LocationMoveRequest) => Promise<void> | void;
   disconnectPings?: DisconnectPing[];
+  autoFollowPlayer?: boolean;
 };
 
 type DisconnectPing = {
@@ -189,6 +190,7 @@ export function LiveMap({
   genderByEmployee = {},
   onMovePlayer,
   disconnectPings = [],
+  autoFollowPlayer = false,
 }: LiveMapProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<any>(null);
@@ -206,6 +208,7 @@ export function LiveMap({
   const [viewport, setViewport] = useState<LiveMapViewport>({ x: 0, y: 0, scale: 1 });
   const [blipOverrides, setBlipOverrides] = useState<Record<string, BlipOverride>>({});
   const [animationNow, setAnimationNow] = useState(() => Date.now());
+  const [isAutoFollowing, setIsAutoFollowing] = useState(autoFollowPlayer);
 
   useEffect(() => {
     const node = wrapperRef.current;
@@ -625,11 +628,9 @@ export function LiveMap({
           const rawY = clampToMapY(activePoint.y + normalizedY * MOVE_SPEED_PX_PER_SEC * deltaSec);
 
           const containingRoom = findRoomContainingPoint(roomsRef.current, rawX, rawY);
-          const targetBounds = containingRoom ? getRoomBlipBounds(containingRoom) : null;
-
-          const nextX = targetBounds ? clamp(rawX, targetBounds.minX, targetBounds.maxX) : rawX;
-          const nextY = targetBounds ? clamp(rawY, targetBounds.minY, targetBounds.maxY) : rawY;
           const nextRoomId = containingRoom?.id ?? activePoint.roomId;
+          const nextX = rawX;
+          const nextY = rawY;
 
           setBlipOverrides((prev) => {
             const next = {
@@ -674,6 +675,54 @@ export function LiveMap({
     };
   }, [currentPlayerId, interactive]);
 
+  useEffect(() => {
+    setIsAutoFollowing(autoFollowPlayer);
+  }, [autoFollowPlayer]);
+
+  useEffect(() => {
+    if (!isAutoFollowing || !currentPlayerId || !interactive) {
+      return;
+    }
+
+    const override = blipOverrides[currentPlayerId];
+    const currentLocation = locations.find((entry) => entry.employeeId === currentPlayerId);
+    const activeRoomId = override?.roomId ?? currentLocation?.roomId ?? rooms[0]?.id;
+    const activeRoom = activeRoomId ? roomLookup.get(activeRoomId) : null;
+
+    if (!activeRoom) {
+      return;
+    }
+
+    const activeBounds = getRoomBlipBounds(activeRoom);
+    const defaultPoint = defaultBlipPositions.get(currentPlayerId) ?? {
+      roomId: activeRoom.id,
+      x: clamp(activeRoom.x + activeRoom.w / 2, activeBounds.minX, activeBounds.maxX),
+      y: clamp(activeRoom.y + activeRoom.h / 2, activeBounds.minY, activeBounds.maxY),
+    };
+
+    const activePoint = override
+      ? {
+          roomId: override.roomId,
+          x: clampToMapX(override.x),
+          y: clampToMapY(override.y),
+        }
+      : defaultPoint;
+
+    const targetZoom = 1.5;
+    const scaledWidth = BASE_WIDTH * fitScale * targetZoom;
+    const scaledHeight = BASE_HEIGHT * fitScale * targetZoom;
+    const targetX = stageWidth / 2 - activePoint.x * fitScale * targetZoom;
+    const targetY = stageHeight / 2 - activePoint.y * fitScale * targetZoom;
+
+    setViewport((prev) => {
+      const lerpFactor = 0.1;
+      const nextX = prev.x + (targetX - prev.x) * lerpFactor;
+      const nextY = prev.y + (targetY - prev.y) * lerpFactor;
+      const nextScale = prev.scale + (targetZoom - prev.scale) * lerpFactor;
+      return clampViewport({ x: nextX, y: nextY, scale: nextScale });
+    });
+  }, [isAutoFollowing, currentPlayerId, interactive, blipOverrides, locations, rooms, roomLookup, defaultBlipPositions, fitScale, stageWidth, stageHeight]);
+
   return (
     <div ref={wrapperRef} className="rounded-2xl border border-outline/60 bg-panel/72 p-3 shadow-card backdrop-blur-sm">
       <Stage
@@ -692,6 +741,7 @@ export function LiveMap({
           if (event.target !== event.target.getStage()) {
             return;
           }
+          setIsAutoFollowing(false);
           setClampedViewport({
             x: Math.round(event.target.x()),
             y: Math.round(event.target.y()),

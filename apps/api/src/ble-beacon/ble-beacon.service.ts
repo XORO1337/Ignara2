@@ -8,8 +8,6 @@ import type {
   BleTagRegistrationPayload,
   ScannerLocationEvent,
 } from "@ignara/sharedtypes";
-import bleno from "@abandonware/bleno";
-import { BleBeaconGattService, BLE_SERVICE_UUID } from "./ble-beacon.gatt.service";
 import { LocationsService } from "../locations/locations.service";
 import { DevicesService } from "../devices/devices.service";
 
@@ -28,7 +26,6 @@ type TagState = {
 @Injectable()
 export class BleBeaconService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(BleBeaconService.name);
-  private readonly gattService = new BleBeaconGattService();
   private readonly tags = new Map<string, TagState>();
   private config: BleBeaconConfig | null = null;
   private isAdvertising = false;
@@ -77,12 +74,8 @@ export class BleBeaconService implements OnModuleInit, OnModuleDestroy {
       this.logger.warn(`Failed to register server beacon device: ${String(error)}`);
     }
 
-    // Set up GATT callbacks
-    this.gattService.setTagRegistrationCallback((payload) => this.handleTagRegistration(payload));
-    this.gattService.setProximityReportCallback((payload) => this.handleProximityReport(payload));
-
-    // Initialize BLE
-    this.initializeBleno();
+    // Start simulated advertising (no real BLE hardware required)
+    this.startAdvertising();
   }
 
   onModuleDestroy() {
@@ -95,58 +88,6 @@ export class BleBeaconService implements OnModuleInit, OnModuleDestroy {
       }
     }
     this.tags.clear();
-
-    if (bleno) {
-      bleno.stopAdvertising();
-      bleno.disconnect();
-    }
-  }
-
-  private initializeBleno() {
-    if (!this.config) {
-      return;
-    }
-
-    bleno.on("stateChange", (state: string) => {
-      this.logger.log(`BLE state changed: ${state}`);
-
-      if (state === "poweredOn") {
-        this.startAdvertising();
-      } else {
-        this.stopAdvertising();
-      }
-    });
-
-    bleno.on("advertisingStart", (error: Error | null) => {
-      if (error) {
-        this.logger.error(`Failed to start advertising: ${error.message}`);
-        return;
-      }
-
-      this.logger.log("BLE advertising started");
-      this.isAdvertising = true;
-
-      // Set up GATT service
-      const ServiceConstructor = this.gattService.createGattServiceDefinition(bleno);
-      bleno.setServices([new (ServiceConstructor as any)()]);
-    });
-
-    bleno.on("advertisingStop", () => {
-      this.logger.log("BLE advertising stopped");
-      this.isAdvertising = false;
-    });
-
-    bleno.on("accept", (clientAddress: string) => {
-      this.logger.log(`BLE client connected: ${clientAddress}`);
-    });
-
-    bleno.on("disconnect", (clientAddress: string) => {
-      this.logger.log(`BLE client disconnected: ${clientAddress}`);
-    });
-
-    bleno.on("rssiUpdate", (rssi: number) => {
-      this.logger.debug(`BLE RSSI update: ${rssi}`);
-    });
   }
 
   private startAdvertising() {
@@ -154,19 +95,30 @@ export class BleBeaconService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const name = this.config.advertiseName;
-    
-    bleno.startAdvertising(name, [BLE_SERVICE_UUID], (error?: Error | null) => {
-      if (error) {
-        this.logger.error(`Failed to start advertising: ${error?.message}`);
-      }
-    });
+    this.isAdvertising = true;
+    this.logger.log(`[MOCK] BLE advertising started as "${this.config.advertiseName}"`);
+    this.logger.log(`[MOCK] Service UUID: 8f240001-6f8d-4f13-a42a-8434f84f0001`);
+    this.logger.log(`[MOCK] This is a simulation mode - no real Bluetooth hardware used`);
+    this.logger.log(`[MOCK] Use POST /ble-beacon/simulate/tag and /proximity to test`);
   }
 
   private stopAdvertising() {
     if (this.isAdvertising) {
-      bleno.stopAdvertising();
+      this.isAdvertising = false;
+      this.logger.log("[MOCK] BLE advertising stopped");
     }
+  }
+
+  // Public method to simulate tag registration (called from controller)
+  simulateTagRegistration(payload: BleTagRegistrationPayload): void {
+    this.logger.log(`[MOCK] Tag registration received: ${payload.deviceId}`);
+    this.handleTagRegistration(payload);
+  }
+
+  // Public method to simulate proximity report (called from controller)
+  simulateProximityReport(payload: BleProximityReportPayload): void {
+    this.logger.log(`[MOCK] Proximity report received: ${payload.deviceId} (RSSI: ${payload.rssi})`);
+    this.handleProximityReport(payload);
   }
 
   private handleTagRegistration(payload: BleTagRegistrationPayload) {
@@ -318,16 +270,11 @@ export class BleBeaconService implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    const status: BleBeaconStatus = {
-      deviceId: this.config.deviceId,
-      roomId: this.config.roomId,
-      orgId: this.config.orgId,
-      active: this.isAdvertising,
-      connectedTags: Array.from(this.tags.values()).filter((t) => t.connection.connected).length,
-      rssiThreshold: this.config.rssiThreshold,
-    };
-
-    this.gattService.setStatus(status);
+    const connectedCount = Array.from(this.tags.values()).filter((t) => t.connection.connected).length;
+    
+    if (this.isAdvertising) {
+      this.logger.debug(`[MOCK] Beacon status - connected tags: ${connectedCount}`);
+    }
   }
 
   // Public API for status queries

@@ -3,7 +3,7 @@
 import type { LastKnownLocation } from "@ignara/sharedtypes";
 import type { KonvaEventObject } from "konva/lib/Node";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Circle, Image as KonvaImage, Layer, Rect, Stage, Text, Transformer } from "react-konva";
+import { Circle, Image as KonvaImage, Layer, Rect, Stage, Text, Transformer, Group } from "react-konva";
 import { useMapEditorStore } from "../store/map-editor-store";
 
 type MapEditorCanvasProps = {
@@ -84,6 +84,13 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
     image.onload = () => setBackgroundImage(image);
     image.src = background.dataUrl;
   }, [background?.dataUrl]);
+
+  useEffect(() => {
+    const clamped = clampViewport(viewport.x, viewport.y, viewport.scale);
+    if (clamped.x !== viewport.x || clamped.y !== viewport.y) {
+      setViewport(clamped);
+    }
+  }, [stageSize, viewport]);
 
   function updateDraggedPosition(id: string, event: KonvaEventObject<DragEvent>) {
     updateRoom(id, {
@@ -223,6 +230,19 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
     transformer.getLayer()?.batchDraw();
   }, [props, rooms, selectedTarget]);
 
+  function clampViewport(x: number, y: number, scale: number) {
+    const minX = Math.min(0, stageSize.width - BASE_WIDTH * scale);
+    const maxX = Math.max(0, stageSize.width - BASE_WIDTH * scale);
+    const minY = Math.min(0, stageSize.height - BASE_HEIGHT * scale);
+    const maxY = Math.max(0, stageSize.height - BASE_HEIGHT * scale);
+
+    return {
+      x: Math.max(minX, Math.min(maxX, x)),
+      y: Math.max(minY, Math.min(maxY, y)),
+      scale,
+    };
+  }
+
   function handleWheel(event: KonvaEventObject<WheelEvent>) {
     event.evt.preventDefault();
 
@@ -246,11 +266,11 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
       y: (pointer.y - viewport.y) / oldScale,
     };
 
-    setViewport({
-      scale: clampedScale,
-      x: Math.round(pointer.x - mousePointTo.x * clampedScale),
-      y: Math.round(pointer.y - mousePointTo.y * clampedScale),
-    });
+    const newX = Math.round(pointer.x - mousePointTo.x * clampedScale);
+    const newY = Math.round(pointer.y - mousePointTo.y * clampedScale);
+    const clamped = clampViewport(newX, newY, clampedScale);
+
+    setViewport(clamped);
   }
 
   const connectedLocations = useMemo(
@@ -274,7 +294,14 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
         y={viewport.y}
         scaleX={viewport.scale}
         scaleY={viewport.scale}
-        onDragEnd={(event) => setViewport({ x: Math.round(event.target.x()), y: Math.round(event.target.y()) })}
+        onDragEnd={(event) => {
+          const clamped = clampViewport(
+            Math.round(event.target.x()),
+            Math.round(event.target.y()),
+            viewport.scale,
+          );
+          setViewport(clamped);
+        }}
         onWheel={handleWheel}
         onMouseDown={(event) => {
           if (event.target === event.target.getStage()) {
@@ -374,14 +401,35 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
           })}
 
           {rooms.map((room) => (
-            <Text
-              key={`${room.id}-label`}
-              x={room.x + 8}
-              y={room.y + 8}
-              text={room.label}
-              fontSize={14}
-              fill="rgba(227,241,255,0.98)"
-            />
+            <Fragment key={`${room.id}-label`}>
+              <Text
+                x={room.x + 8}
+                y={room.y + 8}
+                text={room.label}
+                fontSize={14}
+                fill="rgba(227,241,255,0.98)"
+              />
+              {(room.beaconIds && room.beaconIds.length > 0) || room.beaconId ? (
+                <Group x={room.x + room.w - 32} y={room.y + 8}>
+                  <Circle radius={10} fill="rgba(168,85,247,0.9)" />
+                  <Text
+                    x={-6}
+                    y={-7}
+                    text="📶"
+                    fontSize={14}
+                  />
+                  <Text
+                    x={-20}
+                    y={14}
+                    text={(room.beaconId || room.beaconIds?.[0] || "").slice(0, 12)}
+                    fontSize={8}
+                    fill="rgba(216,180,254,0.95)"
+                    width={40}
+                    align="center"
+                  />
+                </Group>
+              ) : null}
+            </Fragment>
           ))}
 
           {props.map((prop) => (

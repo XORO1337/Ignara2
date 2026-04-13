@@ -1,16 +1,9 @@
-import { Controller, Get, Req, UnauthorizedException, UseGuards } from "@nestjs/common";
-import type { Request } from "express";
-import type { BleBeaconStatus, BleTagConnection } from "@ignara/sharedtypes";
+import { Body, Controller, Get, Post, UseGuards } from "@nestjs/common";
+import type { BleBeaconStatus, BleTagConnection, BleTagRegistrationPayload, BleProximityReportPayload } from "@ignara/sharedtypes";
 import { JwtAuthGuard } from "../auth/jwt-auth.guard";
 import { Roles } from "../common/roles.decorator";
 import { RolesGuard } from "../common/roles.guard";
 import { BleBeaconService } from "./ble-beacon.service";
-
-type SessionUser = {
-  orgId: string;
-  email: string;
-  role: "admin" | "manager" | "employee";
-};
 
 @Controller("ble-beacon")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -26,5 +19,18 @@ export class BleBeaconController {
   @Get("tags")
   getConnectedTags(): BleTagConnection[] {
     return this.bleBeaconService.getConnectedTags();
+  }
+
+  // Simulation endpoints for testing without real BLE hardware
+  @Post("simulate/tag")
+  simulateTagRegistration(@Body() payload: BleTagRegistrationPayload): { ok: boolean } {
+    this.bleBeaconService.simulateTagRegistration(payload);
+    return { ok: true };
+  }
+
+  @Post("simulate/proximity")
+  simulateProximityReport(@Body() payload: BleProximityReportPayload): { ok: boolean } {
+    this.bleBeaconService.simulateProximityReport(payload);
+    return { ok: true };
   }
 }
