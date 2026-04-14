@@ -10,8 +10,8 @@ type MapEditorCanvasProps = {
   locations: LastKnownLocation[];
 };
 
-const BASE_WIDTH = 1200;
-const BASE_HEIGHT = 720;
+const DEFAULT_WIDTH = 1200;
+const DEFAULT_HEIGHT = 720;
 
 const TRANSFORMER_ANCHORS = [
   "top-left",
@@ -40,7 +40,7 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
   const transformerRef = useRef<any>(null);
   const roomNodeRefs = useRef<Record<string, any>>({});
   const propNodeRefs = useRef<Record<string, any>>({});
-  const [stageSize, setStageSize] = useState({ width: BASE_WIDTH, height: BASE_HEIGHT });
+  const [stageSize, setStageSize] = useState({ width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT });
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
 
   const rooms = useMapEditorStore((state) => state.rooms);
@@ -48,6 +48,8 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
   const background = useMapEditorStore((state) => state.background);
   const viewport = useMapEditorStore((state) => state.viewport);
   const setViewport = useMapEditorStore((state) => state.setViewport);
+  const canvasSize = useMapEditorStore((state) => state.canvasSize);
+  const setCanvasSize = useMapEditorStore((state) => state.setCanvasSize);
   const addRoom = useMapEditorStore((state) => state.addRoom);
   const addProp = useMapEditorStore((state) => state.addProp);
   const updateRoom = useMapEditorStore((state) => state.updateRoom);
@@ -56,22 +58,21 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
   const selectedTarget = useMapEditorStore((state) => state.selectedTarget);
 
   useEffect(() => {
-    const node = wrapperRef.current;
-    if (!node) {
+    if (!wrapperRef.current) {
       return;
     }
 
-    const resizeObserver = new ResizeObserver((entries) => {
-      const width = Math.floor(entries[0]?.contentRect.width ?? BASE_WIDTH);
-      if (!width || Number.isNaN(width)) {
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) {
         return;
       }
-      const nextWidth = Math.max(1, width);
-      setStageSize({ width: nextWidth, height: Math.max(220, Math.floor(nextWidth * 0.62)) });
+      const { width, height } = entry.contentRect;
+      setStageSize({ width, height });
     });
 
-    resizeObserver.observe(node);
-    return () => resizeObserver.disconnect();
+    observer.observe(wrapperRef.current);
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -230,11 +231,30 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
     transformer.getLayer()?.batchDraw();
   }, [props, rooms, selectedTarget]);
 
+  useEffect(() => {
+    const transformer = transformerRef.current;
+    if (!transformer || !selectedTarget || selectedTarget.type === "background") {
+      return;
+    }
+
+    const selectedNode =
+      selectedTarget.type === "room"
+        ? roomNodeRefs.current[selectedTarget.id]
+        : propNodeRefs.current[selectedTarget.id];
+
+    if (selectedNode) {
+      transformer.nodes([selectedNode]);
+      transformer.getLayer()?.batchDraw();
+    }
+  }, [selectedTarget]);
+
   function clampViewport(x: number, y: number, scale: number) {
-    const minX = Math.min(0, stageSize.width - BASE_WIDTH * scale);
-    const maxX = Math.max(0, stageSize.width - BASE_WIDTH * scale);
-    const minY = Math.min(0, stageSize.height - BASE_HEIGHT * scale);
-    const maxY = Math.max(0, stageSize.height - BASE_HEIGHT * scale);
+    const baseWidth = canvasSize.width;
+    const baseHeight = canvasSize.height;
+    const minX = Math.min(0, stageSize.width - baseWidth * scale);
+    const maxX = Math.max(0, stageSize.width - baseWidth * scale);
+    const minY = Math.min(0, stageSize.height - baseHeight * scale);
+    const maxY = Math.max(0, stageSize.height - baseHeight * scale);
 
     return {
       x: Math.max(minX, Math.min(maxX, x)),
@@ -318,8 +338,8 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
           <Rect
             x={0}
             y={0}
-            width={BASE_WIDTH}
-            height={BASE_HEIGHT}
+            width={canvasSize.width}
+            height={canvasSize.height}
             cornerRadius={16}
             fill="rgba(255,255,255,0.05)"
             stroke="rgba(140,180,210,0.35)"

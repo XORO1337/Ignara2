@@ -149,11 +149,31 @@ export function parseBackgroundFromMapConfig(
   };
 }
 
+export function parseCanvasSizeFromMapConfig(
+  jsonConfig: Record<string, unknown> | null | undefined,
+): { width: number; height: number } | undefined {
+  const value = jsonConfig?.canvasSize;
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const width = toNumber(candidate.width, 0);
+  const height = toNumber(candidate.height, 0);
+
+  if (width > 0 && height > 0) {
+    return { width, height };
+  }
+
+  return undefined;
+}
+
 export function parseMapEditorData(jsonConfig: Record<string, unknown> | null | undefined) {
   return {
     rooms: parseRoomsFromMapConfig(jsonConfig),
     props: parsePropsFromMapConfig(jsonConfig),
     background: parseBackgroundFromMapConfig(jsonConfig),
+    canvasSize: parseCanvasSizeFromMapConfig(jsonConfig),
   };
 }
 

@@ -60,6 +60,7 @@ export default function MapEditorPage() {
   const props = useMapEditorStore((state) => state.props);
   const background = useMapEditorStore((state) => state.background);
   const selectedTarget = useMapEditorStore((state) => state.selectedTarget);
+  const canvasSize = useMapEditorStore((state) => state.canvasSize);
   const setProps = useMapEditorStore((state) => state.setProps);
   const setBackground = useMapEditorStore((state) => state.setBackground);
   const updateBackground = useMapEditorStore((state) => state.updateBackground);
@@ -69,6 +70,7 @@ export default function MapEditorPage() {
   const removeProp = useMapEditorStore((state) => state.removeProp);
   const selectTarget = useMapEditorStore((state) => state.selectTarget);
   const setRooms = useMapEditorStore((state) => state.setRooms);
+  const setCanvasSize = useMapEditorStore((state) => state.setCanvasSize);
 
   const user = useAuthStore((state) => state.user);
   const setUser = useAuthStore((state) => state.setUser);
@@ -138,6 +140,9 @@ export default function MapEditorPage() {
         setRooms(parsed.rooms);
         setProps(parsed.props);
         setBackground(parsed.background);
+        if (parsed.canvasSize) {
+          setCanvasSize(parsed.canvasSize);
+        }
         setLocations(currentLocations);
 
         if (active) {
@@ -191,14 +196,16 @@ export default function MapEditorPage() {
     try {
       setIsSaving(true);
 
+      const currentState = useMapEditorStore.getState();
       const payload = {
         id: mapId ?? makeId(),
         name: mapName.trim() || "HQ Floor 1",
         jsonConfig: {
           schemaVersion: 2,
-          rooms,
-          props,
-          background,
+          rooms: currentState.rooms,
+          props: currentState.props,
+          background: currentState.background,
+          canvasSize: currentState.canvasSize,
         },
       };
 
@@ -218,7 +225,7 @@ export default function MapEditorPage() {
 
       setMapId(saved.id);
       setMapName(saved.name);
-      setStatus(`Saved ${saved.name} with ${rooms.length} room zone(s) and ${props.length} prop element(s).`);
+      setStatus(`Saved ${saved.name} with ${currentState.rooms.length} room zone(s) and ${currentState.props.length} prop element(s).`);
     } catch (error) {
       if (error instanceof Error && error.message.includes("413")) {
         setStatus("Map payload exceeded the API 5MB limit. Reduce SVG complexity or file size and try again.");
@@ -247,20 +254,66 @@ export default function MapEditorPage() {
 
     try {
       const dataUrl = await readFileAsDataUrl(file);
+      
+      const svgDimensions = await detectSvgDimensions(file);
+      const svgWidth = svgDimensions?.width ?? 1200;
+      const svgHeight = svgDimensions?.height ?? 720;
+      
+      setCanvasSize({ width: svgWidth, height: svgHeight });
       setBackground({
         dataUrl,
         x: 0,
         y: 0,
-        w: 1200,
-        h: 720,
+        w: svgWidth,
+        h: svgHeight,
         opacity: 0.9,
       });
       selectTarget({ type: "background" });
-      setStatus(`Imported SVG floor-plan background: ${file.name}`);
+      setStatus(`Imported SVG (${svgWidth}x${svgHeight}): ${file.name}. Canvas auto-adjusted to SVG dimensions.`);
     } catch {
       setStatus("Could not read SVG file. Try another file and re-import.");
     } finally {
       inputElement.value = "";
+    }
+  }
+
+  async function detectSvgDimensions(file: File): Promise<{ width: number; height: number } | null> {
+    try {
+      const text = await file.text();
+      
+      const widthMatch = text.match(/width=["']([^"']+)["']/i);
+      const heightMatch = text.match(/height=["']([^"']+)["']/i);
+      const viewBoxMatch = text.match(/viewBox=["']([^"']+)["']/i);
+      
+      let width = 0;
+      let height = 0;
+      
+      if (widthMatch) {
+        const parsed = parseFloat(widthMatch[1]);
+        if (!isNaN(parsed) && parsed > 0) width = parsed;
+      }
+      if (heightMatch) {
+        const parsed = parseFloat(heightMatch[1]);
+        if (!isNaN(parsed) && parsed > 0) height = parsed;
+      }
+      
+      if ((!width || !height) && viewBoxMatch) {
+        const parts = viewBoxMatch[1].split(/[\s,]+/).map(Number);
+        if (parts.length >= 4) {
+          const vbWidth = parts[2];
+          const vbHeight = parts[3];
+          if (!width && vbWidth > 0) width = vbWidth;
+          if (!height && vbHeight > 0) height = vbHeight;
+        }
+      }
+      
+      if (width > 0 && height > 0) {
+        return { width: Math.round(width), height: Math.round(height) };
+      }
+      
+      return null;
+    } catch {
+      return null;
     }
   }
 
@@ -351,6 +404,46 @@ export default function MapEditorPage() {
               Upload SVG Floor Plan
               <input className="mt-1 block w-full text-xs" type="file" accept=".svg,image/svg+xml" onChange={(event) => void importSvg(event)} />
             </label>
+
+            <div className="border-t border-outline/50 pt-3">
+              <p className="text-xs text-text-dim mb-2">Canvas Size (px)</p>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs text-text-dim">
+                  Width
+                  <AppInput
+                    type="number"
+                    min={400}
+                    max={5000}
+                    value={canvasSize.width}
+                    onChange={(event) => setCanvasSize({ width: Number(event.target.value) })}
+                  />
+                </label>
+                <label className="text-xs text-text-dim">
+                  Height
+                  <AppInput
+                    type="number"
+                    min={300}
+                    max={5000}
+                    value={canvasSize.height}
+                    onChange={(event) => setCanvasSize({ height: Number(event.target.value) })}
+                  />
+                </label>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1">
+                <AppButton type="button" size="sm" variant="secondary" onClick={() => setCanvasSize({ width: 1200, height: 720 })}>
+                  Small
+                </AppButton>
+                <AppButton type="button" size="sm" variant="secondary" onClick={() => setCanvasSize({ width: 1920, height: 1080 })}>
+                  HD
+                </AppButton>
+                <AppButton type="button" size="sm" variant="secondary" onClick={() => setCanvasSize({ width: 2560, height: 1440 })}>
+                  2K
+                </AppButton>
+                <AppButton type="button" size="sm" variant="secondary" onClick={() => setCanvasSize({ width: 3840, height: 2160 })}>
+                  4K
+                </AppButton>
+              </div>
+            </div>
 
             {background ? (
               <AppButton type="button" variant="secondary" size="sm" onClick={() => selectTarget({ type: "background" })}>

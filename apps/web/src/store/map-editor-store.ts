@@ -10,6 +10,7 @@ type MapEditorState = {
   background: MapBackgroundConfig | null;
   selectedTarget: { type: "room" | "prop"; id: string } | { type: "background" } | null;
   viewport: { x: number; y: number; scale: number };
+  canvasSize: { width: number; height: number };
   setRooms: (rooms: RoomZone[]) => void;
   setProps: (props: MapPropElement[]) => void;
   setBackground: (background: MapBackgroundConfig | null) => void;
@@ -22,8 +23,12 @@ type MapEditorState = {
   removeProp: (id: string) => void;
   selectTarget: (target: MapEditorState["selectedTarget"]) => void;
   setViewport: (viewport: Partial<MapEditorState["viewport"]>) => void;
+  setCanvasSize: (size: Partial<MapEditorState["canvasSize"]>) => void;
   resetEditor: () => void;
 };
+
+const DEFAULT_CANVAS_WIDTH = 1200;
+const DEFAULT_CANVAS_HEIGHT = 720;
 
 export const useMapEditorStore = create<MapEditorState>((set) => ({
   rooms: [],
@@ -31,6 +36,7 @@ export const useMapEditorStore = create<MapEditorState>((set) => ({
   background: null,
   selectedTarget: null,
   viewport: { x: 0, y: 0, scale: 1 },
+  canvasSize: { width: DEFAULT_CANVAS_WIDTH, height: DEFAULT_CANVAS_HEIGHT },
   setRooms: (rooms) => set({ rooms }),
   setProps: (props) => set({ props }),
   setBackground: (background) => set({ background }),
@@ -58,6 +64,13 @@ export const useMapEditorStore = create<MapEditorState>((set) => ({
         ...viewport,
       },
     })),
+  setCanvasSize: (size) =>
+    set((state) => ({
+      canvasSize: {
+        ...state.canvasSize,
+        ...size,
+      },
+    })),
   resetEditor: () =>
     set({
       rooms: [],
@@ -65,5 +78,6 @@ export const useMapEditorStore = create<MapEditorState>((set) => ({
       background: null,
       selectedTarget: null,
       viewport: { x: 0, y: 0, scale: 1 },
+      canvasSize: { width: DEFAULT_CANVAS_WIDTH, height: DEFAULT_CANVAS_HEIGHT },
     }),
 }));
