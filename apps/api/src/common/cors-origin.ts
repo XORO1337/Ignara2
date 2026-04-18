@@ -33,6 +33,10 @@ function getConfiguredCorsOrigins(): string[] {
   return parseOriginList(process.env.CORS_ORIGIN);
 }
 
+function isDevMode(): boolean {
+  return (process.env.NODE_ENV ?? "development") !== "production";
+}
+
 function getCodespacesForwardedOrigins(): string[] {
   const explicitOrigins = parseOriginList(process.env.CODESPACES_HOST_FORWARDED_ORIGIN);
 
@@ -59,6 +63,11 @@ export function isAllowedCorsOrigin(origin: string | undefined): boolean {
 
   const normalizedOrigin = normalizeOrigin(origin);
   const configuredOrigins = getConfiguredCorsOrigins();
+
+  // In development, default to permissive CORS unless explicitly configured.
+  if (configuredOrigins.length === 0 && isDevMode()) {
+    return true;
+  }
 
   if (configuredOrigins.includes("*")) {
     return true;

@@ -2,7 +2,8 @@ import { io, type Socket } from "socket.io-client";
 import { getApiUrl } from "./api";
 
 export async function createLocationSocket(): Promise<Socket> {
-  const apiUrl = await getApiUrl();
+  const apiUrl = await getApiUrl(true);
+  console.info("[socket][locations] creating socket", { apiUrl, path: "/locations/socket.io" });
   return io(`${apiUrl}/locations`, {
     autoConnect: false,
     path: "/locations/socket.io",
@@ -11,7 +12,8 @@ export async function createLocationSocket(): Promise<Socket> {
 }
 
 export async function createChatSocket(): Promise<Socket> {
-  const apiUrl = await getApiUrl();
+  const apiUrl = await getApiUrl(true);
+  console.info("[socket][chat] creating socket", { apiUrl, path: "/chat/socket.io" });
   return io(`${apiUrl}/chat`, {
     autoConnect: false,
     path: "/chat/socket.io",
@@ -20,7 +22,8 @@ export async function createChatSocket(): Promise<Socket> {
 }
 
 export async function createVoiceSocket(): Promise<Socket> {
-  const apiUrl = await getApiUrl();
+  const apiUrl = await getApiUrl(true);
+  console.info("[socket][voice] creating socket", { apiUrl, path: "/voice/socket.io" });
   return io(`${apiUrl}/voice`, {
     autoConnect: false,
     path: "/voice/socket.io",

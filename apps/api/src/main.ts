@@ -24,13 +24,14 @@ function getErrorCode(error: unknown): string | undefined {
 async function listenWithPortFallback(
   app: INestApplication,
   preferredPort: number,
+  host = "0.0.0.0",
   maxAttempts = 50,
 ): Promise<number> {
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const candidatePort = preferredPort + attempt;
 
     try {
-      await app.listen(candidatePort);
+      await app.listen(candidatePort, host);
       return candidatePort;
     } catch (error) {
       if (getErrorCode(error) !== "EADDRINUSE") {
@@ -51,7 +52,8 @@ async function bootstrap() {
   app.use(express.json({ limit: "5mb" }));
   app.use(express.urlencoded({ limit: "5mb", extended: true }));
   app.enableCors({
-    origin: (origin, callback) => validateCorsOrigin(origin, callback),
+    origin: (origin: string | undefined, callback: (error: Error | null, allow?: boolean) => void) =>
+      validateCorsOrigin(origin, callback),
     credentials: true,
   });
 
@@ -65,7 +67,11 @@ async function bootstrap() {
   voiceGateway.initialize(app.getHttpServer());
 
   const preferredPort = Number(process.env.PORT ?? 3001);
-  const boundPort = await listenWithPortFallback(app, preferredPort);
+  const host = process.env.HOST ?? "0.0.0.0";
+  const usePortFallback = process.env.PORT_FALLBACK_ENABLED === "true";
+  const boundPort = usePortFallback
+    ? await listenWithPortFallback(app, preferredPort, host)
+    : (await app.listen(preferredPort, host), preferredPort);
 
   process.env.PORT = String(boundPort);
   if (boundPort !== preferredPort) {

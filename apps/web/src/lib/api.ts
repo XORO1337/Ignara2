@@ -16,6 +16,20 @@ function getConfiguredApiPort(): string {
   return process.env.NEXT_PUBLIC_API_PORT?.trim() || "3001";
 }
 
+function getServerApiUrl(): string {
+  const internalApiUrl = process.env.INTERNAL_API_URL?.trim();
+  if (internalApiUrl) {
+    return trimTrailingSlash(internalApiUrl);
+  }
+
+  const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (configuredApiUrl) {
+    return trimTrailingSlash(configuredApiUrl);
+  }
+
+  return `http://localhost:${getConfiguredApiPort()}`;
+}
+
 function normalizeConfiguredApiUrl(value: string | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) {
@@ -88,6 +102,8 @@ function getBrowserApiCandidates(preferredApiUrl: string | null): string[] {
   const webPort = getConfiguredWebPort();
   const portCandidates = getApiPortCandidates();
   const candidates: string[] = [];
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
+  const isCodespacesHost = host.includes(`-${webPort}.`);
 
   if (preferredApiUrl) {
     pushUnique(candidates, preferredApiUrl);
@@ -106,14 +122,21 @@ function getBrowserApiCandidates(preferredApiUrl: string | null): string[] {
     hostnames.add("localhost");
   }
 
-  for (const name of hostnames) {
-    for (const port of portCandidates) {
-      pushUnique(candidates, `${protocol}//${name}:${port}`);
+  // Port probing is useful for localhost/Codespaces where auto-incremented
+  // dev ports are common. For named/remote hosts, prefer the configured API
+  // port directly to avoid noisy CORS failures on unrelated services.
+  if (isLocalHost || isCodespacesHost) {
+    for (const name of hostnames) {
+      for (const port of portCandidates) {
+        pushUnique(candidates, `${protocol}//${name}:${port}`);
+      }
     }
+  } else {
+    pushUnique(candidates, `${protocol}//${hostname}:${getConfiguredApiPort()}`);
   }
 
   const codespacesMarker = `-${webPort}.`;
-  if (host.includes(codespacesMarker)) {
+  if (isCodespacesHost) {
     for (const port of portCandidates) {
       const replacedHost = host.replace(codespacesMarker, `-${port}.`);
       pushUnique(candidates, `${protocol}//${replacedHost}`);
@@ -147,11 +170,7 @@ async function resolveApiUrlAsync(forceRefresh = false): Promise<string> {
   const configuredApiUrl = normalizeConfiguredApiUrl(process.env.NEXT_PUBLIC_API_URL);
 
   if (typeof window === "undefined") {
-    if (configuredApiUrl) {
-      return configuredApiUrl;
-    }
-
-    return `http://localhost:${getConfiguredApiPort()}`;
+    return getServerApiUrl();
   }
 
   if (!forceRefresh && resolvedApiUrlCache) {
@@ -179,7 +198,8 @@ async function resolveApiUrlAsync(forceRefresh = false): Promise<string> {
     }
 
     const fallbackCandidate = configuredApiUrl ?? candidates[0] ?? trimTrailingSlash(resolveBrowserApiUrl());
-    resolvedApiUrlCache = fallbackCandidate;
+    // Do not cache an unreachable fallback; connectivity may recover shortly
+    // and a fresh probe should be allowed to select the correct endpoint.
     return fallbackCandidate;
   })();
 
@@ -192,16 +212,16 @@ async function resolveApiUrlAsync(forceRefresh = false): Promise<string> {
 }
 
 function resolveApiUrl(): string {
+  if (typeof window === "undefined") {
+    return getServerApiUrl();
+  }
+
   const configuredApiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
   if (configuredApiUrl) {
     return trimTrailingSlash(configuredApiUrl);
   }
 
-  if (typeof window !== "undefined") {
-    return trimTrailingSlash(resolveBrowserApiUrl());
-  }
-
-  return `http://localhost:${getConfiguredApiPort()}`;
+  return trimTrailingSlash(resolveBrowserApiUrl());
 }
 
 export const API_URL = resolveApiUrl();

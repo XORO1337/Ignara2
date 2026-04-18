@@ -55,3 +55,7 @@ pnpm-debug.log*
 # platformio
 .pio/
 .vscode/
+
+# documentation
+docs/
+docs.txt

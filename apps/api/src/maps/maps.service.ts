@@ -4,6 +4,10 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { MapEntity } from "../entities/map.entity";
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 @Injectable()
 export class MapsService {
   constructor(
@@ -29,8 +33,11 @@ export class MapsService {
     name: string;
     jsonConfig: Record<string, unknown>;
   }) {
-    const existing = input.id
-      ? await this.mapsRepository.findOne({ where: { id: input.id, orgId: input.orgId } })
+    const normalizedId = input.id?.trim();
+    const safeId = normalizedId && isUuid(normalizedId) ? normalizedId : undefined;
+
+    const existing = safeId
+      ? await this.mapsRepository.findOne({ where: { id: safeId, orgId: input.orgId } })
       : null;
 
     if (existing) {
@@ -40,7 +47,7 @@ export class MapsService {
     }
 
     const created = this.mapsRepository.create({
-      id: input.id ?? randomUUID(),
+      id: safeId ?? randomUUID(),
       orgId: input.orgId,
       name: input.name,
       jsonConfig: input.jsonConfig,

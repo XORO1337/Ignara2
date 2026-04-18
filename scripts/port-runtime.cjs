@@ -173,6 +173,11 @@ function rewriteLocalUrlPort(value, fallbackValue, port) {
 }
 
 function buildRuntimeEnv(ports, env = process.env) {
+  const configuredPublicApiUrl =
+    env.NEXT_PUBLIC_API_URL && env.NEXT_PUBLIC_API_URL.trim()
+      ? env.NEXT_PUBLIC_API_URL.trim()
+      : "";
+
   const runtimeEnv = {
     WEB_PORT: String(ports.WEB_PORT),
     API_PORT: String(ports.API_PORT),
@@ -182,10 +187,13 @@ function buildRuntimeEnv(ports, env = process.env) {
     MQTT_WS_PORT: String(ports.MQTT_WS_PORT),
     NEXT_PUBLIC_WEB_PORT: String(ports.WEB_PORT),
     NEXT_PUBLIC_API_PORT: String(ports.API_PORT),
-    NEXT_PUBLIC_API_URL:
-      env.NEXT_PUBLIC_API_URL && env.NEXT_PUBLIC_API_URL.trim()
-        ? env.NEXT_PUBLIC_API_URL.trim()
-        : `http://localhost:${ports.API_PORT}`,
+    NEXT_PUBLIC_API_URL: configuredPublicApiUrl,
+    INTERNAL_API_URL: rewriteLocalUrlPort(
+      env.INTERNAL_API_URL,
+      "http://localhost:3001",
+      ports.API_PORT,
+    ),
+    PORT_FALLBACK_ENABLED: "false",
     PORT: String(ports.API_PORT),
     DATABASE_URL: rewriteLocalUrlPort(
       env.DATABASE_URL,
@@ -210,6 +218,8 @@ function toRuntimeEnvFileContent(runtimeEnv) {
     "NEXT_PUBLIC_WEB_PORT",
     "NEXT_PUBLIC_API_PORT",
     "NEXT_PUBLIC_API_URL",
+    "INTERNAL_API_URL",
+    "PORT_FALLBACK_ENABLED",
     "PORT",
     "DATABASE_URL",
     "REDIS_URL",
