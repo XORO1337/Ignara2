@@ -12,6 +12,9 @@ type MapEditorCanvasProps = {
 
 const DEFAULT_WIDTH = 1200;
 const DEFAULT_HEIGHT = 720;
+const MIN_STAGE_WIDTH = 320;
+const MIN_STAGE_HEIGHT = 220;
+const MAX_STAGE_SIDE = 4096;
 
 const TRANSFORMER_ANCHORS = [
   "top-left",
@@ -60,6 +63,12 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
   const selectTarget = useMapEditorStore((state) => state.selectTarget);
   const selectedTarget = useMapEditorStore((state) => state.selectedTarget);
 
+  const canvasAspectRatio = useMemo(() => {
+    const safeWidth = Number.isFinite(canvasSize.width) && canvasSize.width > 0 ? canvasSize.width : DEFAULT_WIDTH;
+    const safeHeight = Number.isFinite(canvasSize.height) && canvasSize.height > 0 ? canvasSize.height : DEFAULT_HEIGHT;
+    return safeHeight / safeWidth;
+  }, [canvasSize.height, canvasSize.width]);
+
   useEffect(() => {
     if (!wrapperRef.current) {
       return;
@@ -70,13 +79,27 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
       if (!entry) {
         return;
       }
-      const { width, height } = entry.contentRect;
-      setStageSize({ width, height });
+
+      const nextWidth = Math.max(
+        MIN_STAGE_WIDTH,
+        Math.min(MAX_STAGE_SIDE, Math.floor(entry.contentRect.width)),
+      );
+      const nextHeight = Math.max(
+        MIN_STAGE_HEIGHT,
+        Math.min(MAX_STAGE_SIDE, Math.floor(nextWidth * canvasAspectRatio)),
+      );
+
+      setStageSize((previous) => {
+        if (previous.width === nextWidth && previous.height === nextHeight) {
+          return previous;
+        }
+        return { width: nextWidth, height: nextHeight };
+      });
     });
 
     observer.observe(wrapperRef.current);
     return () => observer.disconnect();
-  }, []);
+  }, [canvasAspectRatio]);
 
   useEffect(() => {
     if (!background?.dataUrl) {

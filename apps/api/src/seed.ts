@@ -41,6 +41,7 @@ async function seed() {
       gender: "female",
       orgId: org.id,
       password: hashPassword("employee123"),
+      tagDeviceId: "emp-001",
     },
     {
       email: "employee2@ignara.local",
@@ -48,6 +49,7 @@ async function seed() {
       gender: "male",
       orgId: org.id,
       password: hashPassword("employee123"),
+      tagDeviceId: "emp-002",
     },
   ];
 
@@ -59,8 +61,16 @@ async function seed() {
     }
 
     const nextGender = candidate.gender ?? exists.gender ?? "other";
+    let dirty = false;
     if (exists.gender !== nextGender) {
       exists.gender = nextGender;
+      dirty = true;
+    }
+    if (candidate.tagDeviceId !== undefined && exists.tagDeviceId !== candidate.tagDeviceId) {
+      exists.tagDeviceId = candidate.tagDeviceId;
+      dirty = true;
+    }
+    if (dirty) {
       await userRepo.save(exists);
     }
   }

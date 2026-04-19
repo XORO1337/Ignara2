@@ -45,10 +45,10 @@ static esp_ble_adv_data_t s_relay_adv_data = {
 static esp_ble_adv_params_t s_relay_adv_params = {
     .adv_int_min = 0x20,
     .adv_int_max = 0x40,
-    .adv_type = ESP_BLE_ADV_TYPE_NONCONN_IND,
+    .adv_type = ADV_TYPE_NONCONN_IND,
     .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
     .channel_map = ADV_CHNL_ALL,
-    .adv_filter_policy = ESP_BLE_ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
+    .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
 };
 
 static void format_mac_id(const esp_bd_addr_t addr, char *out, size_t len)

@@ -11,6 +11,6 @@ idf_component_register(
         esp_netif
         esp_event
         esp_http_client
-        json
+        cjson
         bt
 )

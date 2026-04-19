@@ -59,3 +59,9 @@ pnpm-debug.log*
 # documentation
 docs/
 docs.txt
+
+# esp files
+esp-section-room/managed_components/
+esp-section/managed_components/
+esp-section-room/dependencies.lock
+esp-section/dependencies.lock

@@ -76,7 +76,7 @@ export class BleBeaconService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   async onModuleInit() {
-    const enabled = this.configService.get<string>("BLE_BEACON_ENABLED", "true") === "true";
+    const enabled = this.configService.get<string>("BLE_BEACON_ENABLED", "false") === "true";
 
     if (!enabled) {
       this.logger.log("BLE beacon disabled via BLE_BEACON_ENABLED=false");
@@ -486,8 +486,18 @@ export class BleBeaconService implements OnModuleInit, OnModuleDestroy {
     }
 
     if (current.beaconDeviceId === bestBeaconId) {
+      const roomChanged = current.roomId !== bestBeaconState.roomId;
       current.rssi = bestRssi;
       current.roomId = bestBeaconState.roomId;
+      if (roomChanged) {
+        // Same beacon, but it's now reporting a different room (e.g. the
+        // beacon was reconfigured). Re-assert so the locations service
+        // updates the room and flips signalSource back to "ble".
+        this.emitScannerEvent("enter", employeeKey, bestBeaconId, bestBeaconState.roomId, bestRssi, now);
+        this.logger.log(
+          `Employee ${employeeKey} stayed on ${bestBeaconId} but room changed → ${bestBeaconState.roomId}`,
+        );
+      }
       return;
     }
 

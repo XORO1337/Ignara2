@@ -37,6 +37,16 @@ const BLIP_RADIUS = 6;
 const MOVE_SPEED_PX_PER_SEC = 130;
 const MOVE_SYNC_INTERVAL_MS = 120;
 const DISCONNECT_PING_DURATION_MS = 900;
+// Idle wander animation parameters — applied only to BLE-tracked employees so
+// the dashboard doesn't look frozen between beacon updates. The wander stays
+// inside the employee's current room and avoids props.
+const WANDER_MOVE_DURATION_MS = 2_000;
+const WANDER_IDLE_DURATION_MS = 10_000;
+const WANDER_MIN_DISTANCE_PX = 20;
+const WANDER_MAX_DISTANCE_PX = 30;
+const WANDER_MAX_OFFSET_PX = 60;
+const WANDER_PROP_PADDING_PX = 4;
+const WANDER_RETRY_DELAY_MS = 600;
 
 type LiveMapViewport = {
   x: number;
@@ -49,6 +59,17 @@ type BlipOverride = {
   x: number;
   y: number;
 };
+
+type WanderState = {
+  phase: "idle" | "moving";
+  phaseStartedAt: number;
+  fromOffsetX: number;
+  fromOffsetY: number;
+  toOffsetX: number;
+  toOffsetY: number;
+};
+
+type WanderOffset = { x: number; y: number };
 
 type PersistedLiveMapState = {
   viewport?: LiveMapViewport;
@@ -179,6 +200,84 @@ function findRoomContainingPoint(rooms: RoomZone[], x: number, y: number): RoomZ
   return null;
 }
 
+// Decorative props that mark where avatars stand should not block movement;
+// only solid items (generic furniture/walls and beacon markers) are obstacles.
+function isBlockingProp(prop: MapPropElement): boolean {
+  return prop.propType === "generic" || prop.propType === "beacon";
+}
+
+// Treat props as axis-aligned for collision: rotation is purely cosmetic on
+// the live map today and the rectangles tend to be square-ish, so the AABB
+// approximation is good enough to keep avatars off them.
+function isPointInsideAnyProp(propsList: MapPropElement[], x: number, y: number, padding = 0): boolean {
+  for (const prop of propsList) {
+    if (!isBlockingProp(prop)) {
+      continue;
+    }
+
+    const minX = Math.min(prop.x, prop.x + prop.w) - padding;
+    const maxX = Math.max(prop.x, prop.x + prop.w) + padding;
+    const minY = Math.min(prop.y, prop.y + prop.h) - padding;
+    const maxY = Math.max(prop.y, prop.y + prop.h) + padding;
+
+    if (x >= minX && x <= maxX && y >= minY && y <= maxY) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function findWalkableRoom(
+  rooms: RoomZone[],
+  propsList: MapPropElement[],
+  x: number,
+  y: number,
+): RoomZone | null {
+  const room = findRoomContainingPoint(rooms, x, y);
+  if (!room) {
+    return null;
+  }
+  if (isPointInsideAnyProp(propsList, x, y)) {
+    return null;
+  }
+  return room;
+}
+
+// Slide along walls: try the full move first, then X-only and Y-only, so the
+// player can hug walls and pass through narrow openings between rooms whose
+// rectangles overlap or share a border. Returns the resolved point and the
+// room that contains it (if any).
+function applyMovementWithBoundaries(
+  rooms: RoomZone[],
+  propsList: MapPropElement[],
+  fromX: number,
+  fromY: number,
+  dx: number,
+  dy: number,
+): { x: number; y: number; roomId: string | null } {
+  const candidates: Array<{ x: number; y: number }> = [];
+  if (dx !== 0 || dy !== 0) {
+    candidates.push({ x: fromX + dx, y: fromY + dy });
+  }
+  if (dx !== 0) {
+    candidates.push({ x: fromX + dx, y: fromY });
+  }
+  if (dy !== 0) {
+    candidates.push({ x: fromX, y: fromY + dy });
+  }
+
+  for (const candidate of candidates) {
+    const room = findWalkableRoom(rooms, propsList, candidate.x, candidate.y);
+    if (room) {
+      return { x: candidate.x, y: candidate.y, roomId: room.id };
+    }
+  }
+
+  const currentRoom = findRoomContainingPoint(rooms, fromX, fromY);
+  return { x: fromX, y: fromY, roomId: currentRoom?.id ?? null };
+}
+
 export function LiveMap({
   rooms,
   locations,
@@ -203,10 +302,13 @@ export function LiveMap({
   const roomLookupRef = useRef<Map<string, RoomZone>>(new Map());
   const defaultBlipPositionsRef = useRef<Map<string, { roomId: string; x: number; y: number }>>(new Map());
   const onMovePlayerRef = useRef<LiveMapProps["onMovePlayer"]>(onMovePlayer);
+  const mapPropsRef = useRef<MapPropElement[]>(mapProps);
+  const wanderStateRef = useRef<Record<string, WanderState>>({});
   const [stageWidth, setStageWidth] = useState(BASE_WIDTH);
   const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
   const [viewport, setViewport] = useState<LiveMapViewport>({ x: 0, y: 0, scale: 1 });
   const [blipOverrides, setBlipOverrides] = useState<Record<string, BlipOverride>>({});
+  const [wanderOffsets, setWanderOffsets] = useState<Record<string, WanderOffset>>({});
   const [animationNow, setAnimationNow] = useState(() => Date.now());
   const [isAutoFollowing, setIsAutoFollowing] = useState(autoFollowPlayer);
 
@@ -434,6 +536,10 @@ export function LiveMap({
     onMovePlayerRef.current = onMovePlayer;
   }, [onMovePlayer]);
 
+  useEffect(() => {
+    mapPropsRef.current = mapProps;
+  }, [mapProps]);
+
   const unplacedCount = locations.filter((location) => !roomLookup.has(location.roomId)).length;
   const stageScale = fitScale * viewport.scale;
 
@@ -624,13 +730,25 @@ export function LiveMap({
           const normalizedX = horizontal / length;
           const normalizedY = vertical / length;
 
-          const rawX = clampToMapX(activePoint.x + normalizedX * MOVE_SPEED_PX_PER_SEC * deltaSec);
-          const rawY = clampToMapY(activePoint.y + normalizedY * MOVE_SPEED_PX_PER_SEC * deltaSec);
+          const dx = normalizedX * MOVE_SPEED_PX_PER_SEC * deltaSec;
+          const dy = normalizedY * MOVE_SPEED_PX_PER_SEC * deltaSec;
 
-          const containingRoom = findRoomContainingPoint(roomsRef.current, rawX, rawY);
-          const nextRoomId = containingRoom?.id ?? activePoint.roomId;
-          const nextX = rawX;
-          const nextY = rawY;
+          // Constrain movement to the union of room rectangles minus blocking
+          // props. Wall sliding lets the player hug edges and pass through
+          // shared/overlapping room borders without escaping into the white
+          // background.
+          const moved = applyMovementWithBoundaries(
+            roomsRef.current,
+            mapPropsRef.current,
+            activePoint.x,
+            activePoint.y,
+            dx,
+            dy,
+          );
+
+          const nextX = clampToMapX(moved.x);
+          const nextY = clampToMapY(moved.y);
+          const nextRoomId = moved.roomId ?? activePoint.roomId;
 
           setBlipOverrides((prev) => {
             const next = {
@@ -678,6 +796,153 @@ export function LiveMap({
   useEffect(() => {
     setIsAutoFollowing(autoFollowPlayer);
   }, [autoFollowPlayer]);
+
+  // ---- Idle wander animation for BLE-tracked employees ----------------------
+  // Beacon updates are bursty (every several seconds at best) so without this
+  // the dashboard looks frozen between reports. We add a small local-only
+  // jitter: 2 s gentle move, 10 s still, repeat. The wander is constrained to
+  // the employee's current room rectangle and avoids blocking props.
+  const wanderCandidateIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const location of mappedLocations) {
+      if (!location.connected) {
+        continue;
+      }
+      if (location.signalSource !== "ble") {
+        continue;
+      }
+      if (location.employeeId === currentPlayerId) {
+        continue;
+      }
+      ids.push(location.employeeId);
+    }
+    return ids.join("|");
+  }, [mappedLocations, currentPlayerId]);
+
+  useEffect(() => {
+    if (wanderCandidateIds.length === 0) {
+      if (Object.keys(wanderStateRef.current).length > 0) {
+        wanderStateRef.current = {};
+      }
+      setWanderOffsets((prev) => (Object.keys(prev).length === 0 ? prev : {}));
+      return;
+    }
+
+    let frame = 0;
+
+    const tick = () => {
+      const now = performance.now();
+      const nextOffsets: Record<string, WanderOffset> = {};
+      const eligibleIds = new Set<string>();
+
+      for (const location of locationsRef.current) {
+        if (!location.connected) continue;
+        if (location.signalSource !== "ble") continue;
+        if (location.employeeId === currentPlayerId) continue;
+        if (blipOverridesRef.current[location.employeeId]) continue;
+
+        const room = roomLookupRef.current.get(location.roomId);
+        if (!room) continue;
+
+        const defaultPoint = defaultBlipPositionsRef.current.get(location.employeeId);
+        if (!defaultPoint) continue;
+
+        eligibleIds.add(location.employeeId);
+
+        let state = wanderStateRef.current[location.employeeId];
+        if (!state) {
+          state = {
+            phase: "idle",
+            phaseStartedAt: now,
+            fromOffsetX: 0,
+            fromOffsetY: 0,
+            toOffsetX: 0,
+            toOffsetY: 0,
+          };
+          wanderStateRef.current[location.employeeId] = state;
+        }
+
+        if (state.phase === "moving" && now - state.phaseStartedAt >= WANDER_MOVE_DURATION_MS) {
+          state.phase = "idle";
+          state.phaseStartedAt = now;
+          state.fromOffsetX = state.toOffsetX;
+          state.fromOffsetY = state.toOffsetY;
+        } else if (state.phase === "idle" && now - state.phaseStartedAt >= WANDER_IDLE_DURATION_MS) {
+          const angle = Math.random() * Math.PI * 2;
+          const distance =
+            WANDER_MIN_DISTANCE_PX + Math.random() * (WANDER_MAX_DISTANCE_PX - WANDER_MIN_DISTANCE_PX);
+          let candidateX = state.fromOffsetX + Math.cos(angle) * distance;
+          let candidateY = state.fromOffsetY + Math.sin(angle) * distance;
+
+          // Don't drift arbitrarily far from the seed position over many cycles.
+          const radial = Math.hypot(candidateX, candidateY);
+          if (radial > WANDER_MAX_OFFSET_PX) {
+            const scale = WANDER_MAX_OFFSET_PX / radial;
+            candidateX *= scale;
+            candidateY *= scale;
+          }
+
+          const targetX = defaultPoint.x + candidateX;
+          const targetY = defaultPoint.y + candidateY;
+
+          const targetRoom = findRoomContainingPoint(roomsRef.current, targetX, targetY);
+          const blocked = isPointInsideAnyProp(mapPropsRef.current, targetX, targetY, WANDER_PROP_PADDING_PX);
+
+          if (targetRoom && targetRoom.id === room.id && !blocked) {
+            state.phase = "moving";
+            state.phaseStartedAt = now;
+            state.toOffsetX = candidateX;
+            state.toOffsetY = candidateY;
+          } else {
+            // Re-roll soon; don't wait another full idle window.
+            state.phaseStartedAt = now - WANDER_IDLE_DURATION_MS + WANDER_RETRY_DELAY_MS;
+          }
+        }
+
+        let offsetX = state.fromOffsetX;
+        let offsetY = state.fromOffsetY;
+        if (state.phase === "moving") {
+          const t = Math.min(1, (now - state.phaseStartedAt) / WANDER_MOVE_DURATION_MS);
+          const eased = 0.5 - 0.5 * Math.cos(Math.PI * t);
+          offsetX = state.fromOffsetX + (state.toOffsetX - state.fromOffsetX) * eased;
+          offsetY = state.fromOffsetY + (state.toOffsetY - state.fromOffsetY) * eased;
+        }
+
+        nextOffsets[location.employeeId] = { x: offsetX, y: offsetY };
+      }
+
+      // Drop wander state for employees that are no longer eligible.
+      for (const key of Object.keys(wanderStateRef.current)) {
+        if (!eligibleIds.has(key)) {
+          delete wanderStateRef.current[key];
+        }
+      }
+
+      setWanderOffsets((prev) => {
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(nextOffsets);
+        if (prevKeys.length !== nextKeys.length) {
+          return nextOffsets;
+        }
+        for (const key of nextKeys) {
+          const a = prev[key];
+          const b = nextOffsets[key];
+          if (!a || Math.abs(a.x - b.x) > 0.05 || Math.abs(a.y - b.y) > 0.05) {
+            return nextOffsets;
+          }
+        }
+        return prev;
+      });
+
+      frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, [wanderCandidateIds, currentPlayerId]);
 
   useEffect(() => {
     if (!isAutoFollowing || !currentPlayerId || !interactive) {
@@ -844,13 +1109,24 @@ export function LiveMap({
               y: clamp(room.y + room.h / 2, bounds.minY, bounds.maxY),
             };
 
-            const activePoint = overridden
+            const basePoint = overridden
               ? {
                   roomId: overridden.roomId,
                   x: clampToMapX(overridden.x),
                   y: clampToMapY(overridden.y),
                 }
               : defaultPoint;
+
+            const wander = !overridden && location.employeeId !== currentPlayerId
+              ? wanderOffsets[location.employeeId]
+              : undefined;
+            const activePoint = wander
+              ? {
+                  roomId: basePoint.roomId,
+                  x: clamp(basePoint.x + wander.x, bounds.minX, bounds.maxX),
+                  y: clamp(basePoint.y + wander.y, bounds.minY, bounds.maxY),
+                }
+              : basePoint;
 
             const style = getMarkerStyle(genderByEmployee[location.employeeId], location.connected);
             const canDragMarker = interactive && currentPlayerId === location.employeeId;

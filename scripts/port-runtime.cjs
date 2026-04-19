@@ -179,6 +179,7 @@ function buildRuntimeEnv(ports, env = process.env) {
       : "";
 
   const runtimeEnv = {
+    HOST: "0.0.0.0",
     WEB_PORT: String(ports.WEB_PORT),
     API_PORT: String(ports.API_PORT),
     POSTGRES_PORT: String(ports.POSTGRES_PORT),
@@ -209,6 +210,7 @@ function buildRuntimeEnv(ports, env = process.env) {
 
 function toRuntimeEnvFileContent(runtimeEnv) {
   const orderedKeys = [
+    "HOST",
     "WEB_PORT",
     "API_PORT",
     "POSTGRES_PORT",

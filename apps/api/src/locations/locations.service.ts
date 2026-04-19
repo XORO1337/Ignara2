@@ -19,6 +19,7 @@ type BeaconCacheValue = {
 type EmployeeRoleCacheValue = {
   updatedAt: number;
   employeeIds: Set<string>;
+  tagToEmail: Map<string, string>;
 };
 
 type RoomIdCacheValue = {
@@ -169,7 +170,8 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
   private async handleEvent(event: ScannerLocationEvent) {
     const orgId = event.orgId ?? "default-org";
     const ts = event.ts ?? Date.now();
-    const key = this.locationKey(orgId, event.employeeId);
+    const employeeId = await this.resolveEmployeeId(orgId, event.employeeId);
+    const key = this.locationKey(orgId, employeeId);
     const previous = await this.getLocationByKey(key);
 
     // Explicit disconnections are authoritative and must not be overturned by scanner telemetry.
@@ -200,7 +202,7 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
 
     const location: LastKnownLocation = {
       orgId,
-      employeeId: event.employeeId,
+      employeeId,
       roomId: resolvedRoomId,
       scannerId: event.scannerId,
       connected: true,
@@ -289,18 +291,31 @@ export class LocationsService implements OnModuleInit, OnModuleDestroy {
 
     const rows = await this.usersRepository
       .createQueryBuilder("user")
-      .select("user.email", "email")
+      .select(["user.email AS email", "user.tagDeviceId AS \"tagDeviceId\""])
       .where("user.orgId = :orgId", { orgId })
       .andWhere("user.role = :role", { role: "employee" })
-      .getRawMany<{ email: string }>();
+      .getRawMany<{ email: string; tagDeviceId: string | null }>();
 
     const employeeIds = new Set(rows.map((entry) => entry.email));
+    const tagToEmail = new Map<string, string>();
+    for (const row of rows) {
+      if (row.tagDeviceId) {
+        tagToEmail.set(row.tagDeviceId, row.email);
+      }
+    }
     this.employeeRoleCache.set(orgId, {
       updatedAt: now,
       employeeIds,
+      tagToEmail,
     });
 
     return employeeIds;
+  }
+
+  private async resolveEmployeeId(orgId: string, broadcastId: string): Promise<string> {
+    await this.getEmployeeEmailSet(orgId);
+    const cached = this.employeeRoleCache.get(orgId);
+    return cached?.tagToEmail.get(broadcastId) ?? broadcastId;
   }
 
   private async assertValidRoomId(orgId: string, roomId: string) {
