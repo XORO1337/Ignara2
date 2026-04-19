@@ -31,6 +31,9 @@ function propFillForType(propType: string | undefined, fallback?: string) {
   if (propType === "player-female") {
     return fallback ?? "rgba(244,114,182,0.38)";
   }
+  if (propType === "beacon") {
+    return fallback ?? "rgba(168,85,247,0.55)";
+  }
   return fallback ?? "rgba(244,114,182,0.35)";
 }
 
@@ -176,14 +179,22 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
       return;
     }
 
-    if (payload === "prop" || payload === "prop-player-male" || payload === "prop-player-female") {
+    if (
+      payload === "prop" ||
+      payload === "prop-player-male" ||
+      payload === "prop-player-female" ||
+      payload === "prop-beacon"
+    ) {
       const id = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `prop-${Date.now()}`;
-      const propType =
+      const propType: "generic" | "player-male" | "player-female" | "beacon" =
         payload === "prop-player-male"
           ? "player-male"
           : payload === "prop-player-female"
             ? "player-female"
-            : "generic";
+            : payload === "prop-beacon"
+              ? "beacon"
+              : "generic";
+      const beaconIndex = props.filter((entry) => entry.propType === "beacon").length + 1;
       addProp({
         id,
         label:
@@ -191,14 +202,19 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
             ? `Male Player ${props.length + 1}`
             : propType === "player-female"
               ? `Female Player ${props.length + 1}`
-              : `Prop ${props.length + 1}`,
+              : propType === "beacon"
+                ? `Beacon ${beaconIndex}`
+                : `Prop ${props.length + 1}`,
         propType,
         x: point.x,
         y: point.y,
-        w: 44,
-        h: 44,
+        w: propType === "beacon" ? 36 : 44,
+        h: propType === "beacon" ? 36 : 44,
         rotation: 0,
         fill: propFillForType(propType),
+        ...(propType === "beacon"
+          ? { beaconDeviceId: `beacon-${id.slice(0, 6)}`, beaconRoomId: "" }
+          : {}),
       });
       selectTarget({ type: "prop", id });
     }
@@ -453,14 +469,32 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
           ))}
 
           {props.map((prop) => (
-            <Text
-              key={`${prop.id}-label`}
-              x={prop.x + 6}
-              y={prop.y + Math.max(3, prop.h - 18)}
-              text={prop.propType === "player-male" ? `${prop.label} (M)` : prop.propType === "player-female" ? `${prop.label} (F)` : prop.label}
-              fontSize={11}
-              fill="rgba(248,250,252,0.95)"
-            />
+            <Fragment key={`${prop.id}-label`}>
+              <Text
+                x={prop.x + 6}
+                y={prop.y + Math.max(3, prop.h - 18)}
+                text={
+                  prop.propType === "player-male"
+                    ? `${prop.label} (M)`
+                    : prop.propType === "player-female"
+                      ? `${prop.label} (F)`
+                      : prop.propType === "beacon"
+                        ? `📡 ${prop.label}`
+                        : prop.label
+                }
+                fontSize={11}
+                fill="rgba(248,250,252,0.95)"
+              />
+              {prop.propType === "beacon" && prop.beaconDeviceId ? (
+                <Text
+                  x={prop.x + 6}
+                  y={prop.y + 6}
+                  text={prop.beaconDeviceId.slice(0, 12)}
+                  fontSize={9}
+                  fill="rgba(216,180,254,0.9)"
+                />
+              ) : null}
+            </Fragment>
           ))}
 
           <Transformer

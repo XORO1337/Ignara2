@@ -1,6 +1,6 @@
 import type { RoomZone } from "@ignara/sharedtypes";
 
-export type MapPropType = "generic" | "player-male" | "player-female";
+export type MapPropType = "generic" | "player-male" | "player-female" | "beacon";
 
 export type MapPropElement = {
   id: string;
@@ -12,6 +12,8 @@ export type MapPropElement = {
   h: number;
   rotation: number;
   fill?: string;
+  beaconDeviceId?: string;
+  beaconRoomId?: string;
 };
 
 export type MapBackgroundConfig = {
@@ -53,7 +55,7 @@ function parseStringArray(value: unknown): string[] {
 }
 
 function parsePropType(value: unknown): MapPropType {
-  if (value === "player-male" || value === "player-female") {
+  if (value === "player-male" || value === "player-female" || value === "beacon") {
     return value;
   }
   return "generic";
@@ -120,6 +122,8 @@ function parsePropsFromMapConfig(jsonConfig: Record<string, unknown> | null | un
       h: toNumber(candidate.h, 42),
       rotation: toNumber(candidate.rotation, 0),
       fill: typeof candidate.fill === "string" ? candidate.fill : "rgba(244,114,182,0.35)",
+      beaconDeviceId: typeof candidate.beaconDeviceId === "string" ? candidate.beaconDeviceId : undefined,
+      beaconRoomId: typeof candidate.beaconRoomId === "string" ? candidate.beaconRoomId : undefined,
     });
   });
 

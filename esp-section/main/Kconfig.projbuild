@@ -1,0 +1,27 @@
+menu "Ignara Employee Tag Configuration"
+
+    config IGNARA_EMPLOYEE_NAME
+        string "Employee name (shown on OLED)"
+        default "Unset Employee"
+        help
+            Human-readable employee name rendered on the OLED boot splash.
+            Set this value via `idf.py menuconfig` before flashing.
+
+    config IGNARA_EMPLOYEE_ID
+        string "Employee ID (broadcast via BLE and shown on OLED)"
+        default "emp-000"
+        help
+            Stable identifier used by the server to track this employee. The
+            room-mounted beacon scans for this ID in the BLE advertisement and
+            reports proximity readings keyed on it.
+            Set this value via `idf.py menuconfig` before flashing.
+
+    config IGNARA_SPLASH_SECONDS
+        int "Boot splash duration (seconds)"
+        default 4
+        range 1 30
+        help
+            How long to keep the employee name/ID splash on screen before the
+            device transitions into its normal operating mode.
+
+endmenu

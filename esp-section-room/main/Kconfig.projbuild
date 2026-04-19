@@ -1,0 +1,78 @@
+menu "Ignara Room Beacon Configuration"
+
+    config IGNARA_BEACON_DEVICE_ID
+        string "Room beacon device ID"
+        default "beacon-unset"
+        help
+            Unique identifier for this room-mounted ESP32. Must match the
+            `beaconDeviceId` configured on the matching Beacon prop in the
+            Ignara map editor.
+
+    config IGNARA_BEACON_ROOM_ID
+        string "Room ID covered by this beacon"
+        default "room-unset"
+        help
+            Logical room identifier. Proximity reports from this beacon are
+            tagged with this value so the server can route location events.
+
+    config IGNARA_BEACON_ORG_ID
+        string "Organization ID"
+        default "default-org"
+
+    config IGNARA_WIFI_SSID
+        string "WiFi SSID"
+        default "Ignara-Office"
+
+    config IGNARA_WIFI_PASSWORD
+        string "WiFi password"
+        default ""
+
+    config IGNARA_API_HOST
+        string "API host (IP or DNS)"
+        default "192.168.1.100"
+
+    config IGNARA_API_PORT
+        int "API port"
+        default 3001
+        range 1 65535
+
+    config IGNARA_API_SCHEME_HTTPS
+        bool "Use HTTPS for API"
+        default n
+
+    config IGNARA_DEVICE_TOKEN
+        string "Shared device token (X-Device-Token header)"
+        default ""
+        help
+            Must match ROOM_BEACON_DEVICE_TOKEN in the API's environment.
+            Leave blank during development to disable authentication.
+
+    config IGNARA_REPORT_INTERVAL_MS
+        int "Report interval (ms)"
+        default 5000
+        range 1000 60000
+
+    config IGNARA_NOTIFY_POLL_INTERVAL_MS
+        int "Notification poll interval (ms)"
+        default 3000
+        range 500 60000
+
+    config IGNARA_BLE_SCAN_WINDOW_MS
+        int "BLE scan window (ms) before a reading is considered stale"
+        default 15000
+        range 2000 120000
+
+    config IGNARA_BLE_ADV_NAME_PREFIX
+        string "Advertising-name prefix used by employee tags"
+        default "IGN-EMP-"
+        help
+            The beacon accepts BLE advertisements whose device name starts
+            with this prefix. The remainder of the name is treated as the
+            employee ID reported to the server.
+
+    config IGNARA_RELAY_ADV_SECONDS
+        int "Seconds to relay a notification over BLE advertising"
+        default 15
+        range 3 120
+
+endmenu

@@ -83,6 +83,11 @@ export default function MapEditorPage() {
   const [hasAccess, setHasAccess] = useState(false);
   const [locations, setLocations] = useState<LastKnownLocation[]>([]);
   const [socketState, setSocketState] = useState<"disconnected" | "connecting" | "connected">("disconnected");
+  const [beaconMessage, setBeaconMessage] = useState("Meeting starting in 5 minutes");
+  const [beaconPriority, setBeaconPriority] = useState<"low" | "normal" | "high">("normal");
+  const [beaconTargetRoomId, setBeaconTargetRoomId] = useState("");
+  const [beaconTtlSeconds, setBeaconTtlSeconds] = useState(60);
+  const [isBroadcasting, setIsBroadcasting] = useState(false);
 
   const selectedRoom = selectedTarget?.type === "room" ? rooms.find((room) => room.id === selectedTarget.id) : null;
   const selectedProp = selectedTarget?.type === "prop" ? props.find((prop) => prop.id === selectedTarget.id) : null;
@@ -235,6 +240,35 @@ export default function MapEditorPage() {
       setStatus("Failed to save map. Verify API connectivity and permissions.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function broadcastBeaconNotification() {
+    const trimmed = beaconMessage.trim();
+    if (!trimmed) {
+      setStatus("Enter a notification message before broadcasting.");
+      return;
+    }
+
+    try {
+      setIsBroadcasting(true);
+      const response = await apiRequest<{ id: string; message: string }>("/ble-beacon/notifications/broadcast", {
+        method: "POST",
+        body: JSON.stringify({
+          message: trimmed,
+          priority: beaconPriority,
+          targetRoomId: beaconTargetRoomId.trim() || undefined,
+          ttlSeconds: Math.max(5, Math.min(3600, Number(beaconTtlSeconds) || 60)),
+        }),
+      });
+      setStatus(
+        `Broadcast queued (id ${response.id.slice(0, 8)}): "${response.message}"` +
+          (beaconTargetRoomId.trim() ? ` → room ${beaconTargetRoomId.trim()}` : " → all rooms"),
+      );
+    } catch {
+      setStatus("Broadcast failed. Verify API access and that you are admin/manager.");
+    } finally {
+      setIsBroadcasting(false);
     }
   }
 
@@ -400,6 +434,15 @@ export default function MapEditorPage() {
               Player Prop (Female)
             </button>
 
+            <button
+              type="button"
+              draggable
+              onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop-beacon")}
+              className="w-full rounded-xl border border-outline bg-panel-strong px-3 py-2 text-left text-sm hover:bg-panel"
+            >
+              Beacon (Room ESP32)
+            </button>
+
             <label className="block text-sm text-text-dim">
               Upload SVG Floor Plan
               <input className="mt-1 block w-full text-xs" type="file" accept=".svg,image/svg+xml" onChange={(event) => void importSvg(event)} />
@@ -450,6 +493,59 @@ export default function MapEditorPage() {
                 Select Background
               </AppButton>
             ) : null}
+
+            <div className="border-t border-outline/50 pt-3 space-y-2">
+              <p className="text-xs text-text-dim">Broadcast to Room Beacons</p>
+              <label className="block text-xs text-text-dim">
+                Message
+                <AppInput
+                  value={beaconMessage}
+                  onChange={(event) => setBeaconMessage(event.target.value)}
+                  placeholder="Meeting starting in 5 minutes"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-xs text-text-dim">
+                  Priority
+                  <select
+                    className="mt-1 w-full rounded-xl border border-outline/70 bg-panel px-2 py-2 text-xs text-text"
+                    value={beaconPriority}
+                    onChange={(event) => setBeaconPriority(event.target.value as "low" | "normal" | "high")}
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                  </select>
+                </label>
+                <label className="text-xs text-text-dim">
+                  TTL (s)
+                  <AppInput
+                    type="number"
+                    min={5}
+                    max={3600}
+                    value={beaconTtlSeconds}
+                    onChange={(event) => setBeaconTtlSeconds(Number(event.target.value) || 60)}
+                  />
+                </label>
+              </div>
+              <label className="block text-xs text-text-dim">
+                Target Room ID (blank = all rooms)
+                <AppInput
+                  value={beaconTargetRoomId}
+                  onChange={(event) => setBeaconTargetRoomId(event.target.value)}
+                  placeholder="room-a"
+                />
+              </label>
+              <AppButton
+                type="button"
+                size="sm"
+                onClick={() => void broadcastBeaconNotification()}
+                loading={isBroadcasting}
+                disabled={isBroadcasting || !hasAccess}
+              >
+                Push to Beacons
+              </AppButton>
+            </div>
           </GlassCard>
 
           <MapEditorCanvas locations={locations} />
@@ -553,15 +649,41 @@ export default function MapEditorPage() {
                     value={selectedProp.propType}
                     onChange={(event) =>
                       updateProp(selectedProp.id, {
-                        propType: event.target.value as "generic" | "player-male" | "player-female",
+                        propType: event.target.value as "generic" | "player-male" | "player-female" | "beacon",
                       })
                     }
                   >
                     <option value="generic">Generic</option>
                     <option value="player-male">Player Male</option>
                     <option value="player-female">Player Female</option>
+                    <option value="beacon">Beacon (Room ESP32)</option>
                   </select>
                 </label>
+
+                {selectedProp.propType === "beacon" ? (
+                  <>
+                    <label className="block text-sm text-text-dim">
+                      Beacon Device ID
+                      <AppInput
+                        value={selectedProp.beaconDeviceId ?? ""}
+                        onChange={(event) =>
+                          updateProp(selectedProp.id, { beaconDeviceId: event.target.value || undefined })
+                        }
+                        placeholder="beacon-room-a"
+                      />
+                    </label>
+                    <label className="block text-sm text-text-dim">
+                      Covers Room ID
+                      <AppInput
+                        value={selectedProp.beaconRoomId ?? ""}
+                        onChange={(event) =>
+                          updateProp(selectedProp.id, { beaconRoomId: event.target.value || undefined })
+                        }
+                        placeholder="room-a"
+                      />
+                    </label>
+                  </>
+                ) : null}
                 <label className="block text-sm text-text-dim">
                   X
                   <AppInput

@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
 import { BleBeaconController } from "./ble-beacon.controller";
+import { RoomBeaconController } from "./room-beacon.controller";
 import { BleBeaconService } from "./ble-beacon.service";
 import { DevicesModule } from "../devices/devices.module";
 import { LocationsModule } from "../locations/locations.module";
@@ -16,7 +17,7 @@ import { DeviceEntity } from "../entities/device.entity";
     LocationsModule,
     TypeOrmModule.forFeature([MapEntity, UserEntity, DeviceEntity]),
   ],
-  controllers: [BleBeaconController],
+  controllers: [BleBeaconController, RoomBeaconController],
   providers: [BleBeaconService],
   exports: [BleBeaconService],
 })

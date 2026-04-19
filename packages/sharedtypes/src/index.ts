@@ -256,3 +256,43 @@ export interface BleBeaconStatus {
   connectedTags: number;
   rssiThreshold: number;
 }
+
+// Room Beacon (ESP32 beacon mounted in each room) protocol
+
+export interface RoomBeaconReading {
+  deviceId: string;
+  employeeId?: string;
+  rssi: number;
+  lastSeenMsAgo?: number;
+}
+
+export interface RoomBeaconReportPayload {
+  beaconDeviceId: string;
+  roomId: string;
+  orgId?: string;
+  ts?: number;
+  readings: RoomBeaconReading[];
+}
+
+export interface RoomBeaconNotification {
+  id: string;
+  message: string;
+  priority: "low" | "normal" | "high";
+  targetEmployeeId?: string;
+  targetRoomId?: string;
+  createdAt: number;
+  expiresAt: number;
+}
+
+export interface RoomBeaconNotifyRequest {
+  message: string;
+  priority?: "low" | "normal" | "high";
+  targetEmployeeId?: string;
+  targetRoomId?: string;
+  ttlSeconds?: number;
+}
+
+export interface RoomBeaconPollResponse {
+  beaconDeviceId: string;
+  pending: RoomBeaconNotification[];
+}
