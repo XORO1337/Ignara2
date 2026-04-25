@@ -1,12 +1,49 @@
+/*
+ * Ignara employee tag firmware for the ESP32-C3 Super Mini.
+ *
+ * The tag does two things:
+ *   1. Broadcasts a BLE advertisement carrying the employee ID so that the
+ *      room-mounted beacon can log proximity.
+ *   2. Drives a 16x2 HD44780 LCD (via an I2C PCF8574 backpack) to show the
+ *      employee's name/ID, and lets the wearer flip to a "meeting" screen
+ *      with a push button + buzzer feedback.
+ *
+ * -------------------------------------------------------------------------
+ * ESP32-C3 Super Mini wiring
+ * -------------------------------------------------------------------------
+ *   LCD backpack VCC   -> 5V         (board's 5V / VBUS pad)
+ *   LCD backpack GND   -> GND
+ *   LCD backpack SDA   -> GPIO5
+ *   LCD backpack SCL   -> GPIO6
+ *
+ *   Push button        -> GPIO3 and GND   (uses internal pull-up, active LOW)
+ *
+ *   Buzzer  +          -> GPIO4
+ *   Buzzer  -          -> GND
+ *
+ * Notes:
+ *   - Most PCF8574 LCD backpacks are at I2C address 0x27 (some are 0x3F).
+ *     Change LCD_I2C_ADDRESS below if yours differs.
+ *   - GPIO2, GPIO8, GPIO9 are strapping pins and are avoided here.
+ *   - GPIO8 is the onboard LED, GPIO9 is the BOOT button.
+ *   - GPIO20/GPIO21 are reserved for UART0 (flashing / logging).
+ *   - The LCD expects 5V on VCC for readable contrast; the PCF8574 I/O is
+ *     tolerant of the C3's 3.3 V I2C levels.
+ * -------------------------------------------------------------------------
+ */
+
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "driver/i2c.h"
 #include "esp_check.h"
+#include "esp_err.h"
 #include "esp_log.h"
-#include "esp_random.h"
+#include "esp_rom_sys.h"
+#include "driver/i2c_master.h"
+#include "driver/gpio.h"
 #include "esp_bt.h"
 #include "esp_bt_defs.h"
 #include "esp_bt_main.h"
@@ -20,31 +57,55 @@
 #ifndef CONFIG_IGNARA_EMPLOYEE_ID
 #define CONFIG_IGNARA_EMPLOYEE_ID "emp-000"
 #endif
-#ifndef CONFIG_IGNARA_SPLASH_SECONDS
-#define CONFIG_IGNARA_SPLASH_SECONDS 4
-#endif
 
-#define TAG "oled"
+#define TAG "ignara"
 
-#define I2C_PORT I2C_NUM_0
-#define I2C_SDA_GPIO 21
-#define I2C_SCL_GPIO 22
-#define I2C_CLK_HZ 400000
+/* -------------------------------------------------------------------------
+ * I2C / LCD configuration
+ * ------------------------------------------------------------------------- */
+#define I2C_MASTER_NUM          I2C_NUM_0
+#define I2C_MASTER_SDA_IO       GPIO_NUM_5
+#define I2C_MASTER_SCL_IO       GPIO_NUM_6
+#define I2C_MASTER_FREQ_HZ      100000
+#define I2C_MASTER_TIMEOUT_MS   100
 
-#define OLED_ADDR 0x3C
-#define OLED_WIDTH 128
-#define OLED_HEIGHT 64
-#define OLED_PAGES (OLED_HEIGHT / 8)
+#define BUTTON_PIN              GPIO_NUM_3
+#define BUZZER_PIN              GPIO_NUM_4
 
-#define LOGO_WIDTH 16
-#define LOGO_HEIGHT 16
+#define LCD_I2C_ADDRESS         0x27
 
-static uint8_t s_framebuffer[OLED_WIDTH * OLED_PAGES];
+/* PCF8574 bit mapping used by common LCD backpacks */
+#define LCD_RS                  0x01
+#define LCD_RW                  0x02
+#define LCD_EN                  0x04
+#define LCD_BACKLIGHT           0x08
+
+/* HD44780 commands */
+#define LCD_CMD_CLEAR           0x01
+#define LCD_CMD_HOME            0x02
+#define LCD_CMD_ENTRY_MODE      0x06
+#define LCD_CMD_DISPLAY_ON      0x0C
+#define LCD_CMD_FUNCTION_SET    0x28
+#define LCD_COLS                16
+
+static i2c_master_bus_handle_t s_i2c_bus = NULL;
+static i2c_master_dev_handle_t s_lcd_dev = NULL;
+static int s_last_button_state = 1;
+static int s_current_button_state = 1;
+
+static char s_default_line1[LCD_COLS + 1];
+static char s_default_line2[LCD_COLS + 1];
+static const char *s_meeting_line1 = "meeting:";
+static const char *s_meeting_line2 = "in conference room 3PM ";
+
+/* -------------------------------------------------------------------------
+ * BLE advertising state
+ * ------------------------------------------------------------------------- */
 static bool s_ble_adv_started = false;
 static uint8_t s_adv_config_done = 0;
 
-#define ADV_CONFIG_FLAG (1 << 0)
-#define SCAN_RSP_CONFIG_FLAG (1 << 1)
+#define ADV_CONFIG_FLAG         (1 << 0)
+#define SCAN_RSP_CONFIG_FLAG    (1 << 1)
 
 static uint8_t s_adv_raw_data[31];
 static uint8_t s_adv_raw_len = 0;
@@ -87,201 +148,9 @@ static esp_ble_gap_ext_adv_t s_ext_adv = {
 };
 #endif
 
-static const uint8_t logo_bmp[] = {
-    0b00000000, 0b11000000,
-    0b00000001, 0b11000000,
-    0b00000001, 0b11000000,
-    0b00000011, 0b11100000,
-    0b11110011, 0b11100000,
-    0b11111110, 0b11111000,
-    0b01111110, 0b11111111,
-    0b00110011, 0b10011111,
-    0b00011111, 0b11111100,
-    0b00001101, 0b01110000,
-    0b00011011, 0b10100000,
-    0b00111111, 0b11100000,
-    0b00111111, 0b11110000,
-    0b01111100, 0b11110000,
-    0b01110000, 0b01110000,
-    0b00000000, 0b00110000,
-};
-
-static esp_err_t oled_write_command(uint8_t cmd)
-{
-    uint8_t payload[2] = {0x00, cmd};
-    return i2c_master_write_to_device(I2C_PORT, OLED_ADDR, payload, sizeof(payload), pdMS_TO_TICKS(100));
-}
-
-static esp_err_t oled_write_data(const uint8_t *data, size_t len)
-{
-    uint8_t tx[17];
-    tx[0] = 0x40;
-
-    while (len > 0) {
-        size_t chunk = len > 16 ? 16 : len;
-        memcpy(&tx[1], data, chunk);
-        ESP_RETURN_ON_ERROR(
-            i2c_master_write_to_device(I2C_PORT, OLED_ADDR, tx, chunk + 1, pdMS_TO_TICKS(100)),
-            TAG,
-            "failed to write display data"
-        );
-        data += chunk;
-        len -= chunk;
-    }
-    return ESP_OK;
-}
-
-static esp_err_t oled_set_cursor(uint8_t page, uint8_t column)
-{
-    ESP_RETURN_ON_ERROR(oled_write_command((uint8_t)(0xB0 | page)), TAG, "set page failed");
-    ESP_RETURN_ON_ERROR(oled_write_command((uint8_t)(0x00 | (column & 0x0F))), TAG, "set column low failed");
-    ESP_RETURN_ON_ERROR(oled_write_command((uint8_t)(0x10 | (column >> 4))), TAG, "set column high failed");
-    return ESP_OK;
-}
-
-static esp_err_t oled_update(void)
-{
-    for (uint8_t page = 0; page < OLED_PAGES; page++) {
-        ESP_RETURN_ON_ERROR(oled_set_cursor(page, 0), TAG, "cursor set failed");
-        ESP_RETURN_ON_ERROR(
-            oled_write_data(&s_framebuffer[page * OLED_WIDTH], OLED_WIDTH),
-            TAG,
-            "page write failed"
-        );
-    }
-    return ESP_OK;
-}
-
-static void oled_clear(bool color)
-{
-    memset(s_framebuffer, color ? 0xFF : 0x00, sizeof(s_framebuffer));
-}
-
-static void oled_draw_pixel(int x, int y, bool color)
-{
-    if (x < 0 || x >= OLED_WIDTH || y < 0 || y >= OLED_HEIGHT) {
-        return;
-    }
-
-    const size_t idx = (size_t)x + ((size_t)y / 8U) * OLED_WIDTH;
-    const uint8_t bit = (uint8_t)(1U << (y & 0x7));
-
-    if (color) {
-        s_framebuffer[idx] |= bit;
-    } else {
-        s_framebuffer[idx] &= (uint8_t)~bit;
-    }
-}
-
-static void oled_draw_line(int x0, int y0, int x1, int y1, bool color)
-{
-    int dx = (x1 > x0) ? (x1 - x0) : (x0 - x1);
-    int sx = (x0 < x1) ? 1 : -1;
-    int dy = (y0 > y1) ? (y1 - y0) : (y0 - y1);
-    int sy = (y0 < y1) ? 1 : -1;
-    int err = dx + dy;
-
-    while (true) {
-        oled_draw_pixel(x0, y0, color);
-        if (x0 == x1 && y0 == y1) {
-            break;
-        }
-        int e2 = err * 2;
-        if (e2 >= dy) {
-            err += dy;
-            x0 += sx;
-        }
-        if (e2 <= dx) {
-            err += dx;
-            y0 += sy;
-        }
-    }
-}
-
-static void oled_draw_rect(int x, int y, int w, int h, bool color)
-{
-    oled_draw_line(x, y, x + w - 1, y, color);
-    oled_draw_line(x, y + h - 1, x + w - 1, y + h - 1, color);
-    oled_draw_line(x, y, x, y + h - 1, color);
-    oled_draw_line(x + w - 1, y, x + w - 1, y + h - 1, color);
-}
-
-static void oled_draw_circle(int xc, int yc, int r, bool color)
-{
-    int x = 0;
-    int y = r;
-    int d = 3 - (2 * r);
-
-    while (y >= x) {
-        oled_draw_pixel(xc + x, yc + y, color);
-        oled_draw_pixel(xc - x, yc + y, color);
-        oled_draw_pixel(xc + x, yc - y, color);
-        oled_draw_pixel(xc - x, yc - y, color);
-        oled_draw_pixel(xc + y, yc + x, color);
-        oled_draw_pixel(xc - y, yc + x, color);
-        oled_draw_pixel(xc + y, yc - x, color);
-        oled_draw_pixel(xc - y, yc - x, color);
-
-        x++;
-        if (d > 0) {
-            y--;
-            d += 4 * (x - y) + 10;
-        } else {
-            d += 4 * x + 6;
-        }
-    }
-}
-
-static void oled_draw_bitmap(int x, int y, const uint8_t *bitmap, int w, int h, bool color)
-{
-    int row_bytes = (w + 7) / 8;
-
-    for (int row = 0; row < h; row++) {
-        for (int col = 0; col < w; col++) {
-            int byte_idx = row * row_bytes + (col / 8);
-            int bit_idx = 7 - (col % 8);
-            if ((bitmap[byte_idx] >> bit_idx) & 0x01) {
-                oled_draw_pixel(x + col, y + row, color);
-            }
-        }
-    }
-}
-
-static const uint8_t font5x7[96][5] = {
-    {0x00,0x00,0x00,0x00,0x00}, {0x00,0x00,0x5F,0x00,0x00}, {0x00,0x07,0x00,0x07,0x00},
-    {0x14,0x7F,0x14,0x7F,0x14}, {0x24,0x2A,0x7F,0x2A,0x12}, {0x23,0x13,0x08,0x64,0x62},
-    {0x36,0x49,0x55,0x22,0x50}, {0x00,0x05,0x03,0x00,0x00}, {0x00,0x1C,0x22,0x41,0x00},
-    {0x00,0x41,0x22,0x1C,0x00}, {0x14,0x08,0x3E,0x08,0x14}, {0x08,0x08,0x3E,0x08,0x08},
-    {0x00,0x50,0x30,0x00,0x00}, {0x08,0x08,0x08,0x08,0x08}, {0x00,0x60,0x60,0x00,0x00},
-    {0x20,0x10,0x08,0x04,0x02}, {0x3E,0x51,0x49,0x45,0x3E}, {0x00,0x42,0x7F,0x40,0x00},
-    {0x42,0x61,0x51,0x49,0x46}, {0x21,0x41,0x45,0x4B,0x31}, {0x18,0x14,0x12,0x7F,0x10},
-    {0x27,0x45,0x45,0x45,0x39}, {0x3C,0x4A,0x49,0x49,0x30}, {0x01,0x71,0x09,0x05,0x03},
-    {0x36,0x49,0x49,0x49,0x36}, {0x06,0x49,0x49,0x29,0x1E}, {0x00,0x36,0x36,0x00,0x00},
-    {0x00,0x56,0x36,0x00,0x00}, {0x08,0x14,0x22,0x41,0x00}, {0x14,0x14,0x14,0x14,0x14},
-    {0x00,0x41,0x22,0x14,0x08}, {0x02,0x01,0x51,0x09,0x06}, {0x32,0x49,0x79,0x41,0x3E},
-    {0x7E,0x11,0x11,0x11,0x7E}, {0x7F,0x49,0x49,0x49,0x36}, {0x3E,0x41,0x41,0x41,0x22},
-    {0x7F,0x41,0x41,0x22,0x1C}, {0x7F,0x49,0x49,0x49,0x41}, {0x7F,0x09,0x09,0x01,0x01},
-    {0x3E,0x41,0x41,0x51,0x32}, {0x7F,0x08,0x08,0x08,0x7F}, {0x00,0x41,0x7F,0x41,0x00},
-    {0x20,0x40,0x41,0x3F,0x01}, {0x7F,0x08,0x14,0x22,0x41}, {0x7F,0x40,0x40,0x40,0x40},
-    {0x7F,0x02,0x04,0x02,0x7F}, {0x7F,0x04,0x08,0x10,0x7F}, {0x3E,0x41,0x41,0x41,0x3E},
-    {0x7F,0x09,0x09,0x09,0x06}, {0x3E,0x41,0x51,0x21,0x5E}, {0x7F,0x09,0x19,0x29,0x46},
-    {0x46,0x49,0x49,0x49,0x31}, {0x01,0x01,0x7F,0x01,0x01}, {0x3F,0x40,0x40,0x40,0x3F},
-    {0x1F,0x20,0x40,0x20,0x1F}, {0x7F,0x20,0x18,0x20,0x7F}, {0x63,0x14,0x08,0x14,0x63},
-    {0x03,0x04,0x78,0x04,0x03}, {0x61,0x51,0x49,0x45,0x43}, {0x00,0x00,0x7F,0x41,0x41},
-    {0x02,0x04,0x08,0x10,0x20}, {0x41,0x41,0x7F,0x00,0x00}, {0x04,0x02,0x01,0x02,0x04},
-    {0x40,0x40,0x40,0x40,0x40}, {0x00,0x01,0x02,0x04,0x00}, {0x20,0x54,0x54,0x54,0x78},
-    {0x7F,0x48,0x44,0x44,0x38}, {0x38,0x44,0x44,0x44,0x20}, {0x38,0x44,0x44,0x48,0x7F},
-    {0x38,0x54,0x54,0x54,0x18}, {0x08,0x7E,0x09,0x01,0x02}, {0x08,0x14,0x54,0x54,0x3C},
-    {0x7F,0x08,0x04,0x04,0x78}, {0x00,0x44,0x7D,0x40,0x00}, {0x20,0x40,0x44,0x3D,0x00},
-    {0x00,0x7F,0x10,0x28,0x44}, {0x00,0x41,0x7F,0x40,0x00}, {0x7C,0x04,0x18,0x04,0x78},
-    {0x7C,0x08,0x04,0x04,0x78}, {0x38,0x44,0x44,0x44,0x38}, {0x7C,0x14,0x14,0x14,0x08},
-    {0x08,0x14,0x14,0x18,0x7C}, {0x7C,0x08,0x04,0x04,0x08}, {0x48,0x54,0x54,0x54,0x20},
-    {0x04,0x3F,0x44,0x40,0x20}, {0x3C,0x40,0x40,0x20,0x7C}, {0x1C,0x20,0x40,0x20,0x1C},
-    {0x3C,0x40,0x30,0x40,0x3C}, {0x44,0x28,0x10,0x28,0x44}, {0x0C,0x50,0x50,0x50,0x3C},
-    {0x44,0x64,0x54,0x4C,0x44}, {0x00,0x08,0x36,0x41,0x00}, {0x00,0x00,0x7F,0x00,0x00},
-    {0x00,0x41,0x36,0x08,0x00}, {0x10,0x08,0x08,0x10,0x08}, {0x78,0x46,0x41,0x46,0x78},
-};
-
+/* -------------------------------------------------------------------------
+ * BLE advertising
+ * ------------------------------------------------------------------------- */
 static void ble_gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param)
 {
     switch (event) {
@@ -434,175 +303,245 @@ static esp_err_t ble_advertising_init(void)
     return ESP_OK;
 }
 
-static void oled_draw_char(int x, int y, char c, bool color)
+/* -------------------------------------------------------------------------
+ * Buzzer
+ * ------------------------------------------------------------------------- */
+static void buzzer_beep(int times, int on_ms, int off_ms)
 {
-    if (c < 32 || c > 127) {
-        c = '?';
-    }
-    const uint8_t *glyph = font5x7[c - 32];
-    for (int col = 0; col < 5; col++) {
-        uint8_t bits = glyph[col];
-        for (int row = 0; row < 7; row++) {
-            if (bits & (1U << row)) {
-                oled_draw_pixel(x + col, y + row, color);
-            }
+    for (int i = 0; i < times; i++) {
+        gpio_set_level(BUZZER_PIN, 1);
+        vTaskDelay(pdMS_TO_TICKS(on_ms));
+        gpio_set_level(BUZZER_PIN, 0);
+        if (off_ms > 0) {
+            vTaskDelay(pdMS_TO_TICKS(off_ms));
         }
     }
 }
 
-static void oled_draw_text(int x, int y, const char *text, bool color)
+/* -------------------------------------------------------------------------
+ * LCD (HD44780 via PCF8574 I2C backpack)
+ * ------------------------------------------------------------------------- */
+static esp_err_t lcd_i2c_write(uint8_t data)
+{
+    return i2c_master_transmit(s_lcd_dev, &data, 1, I2C_MASTER_TIMEOUT_MS);
+}
+
+static esp_err_t lcd_write4(uint8_t nibble_with_ctrl)
+{
+    /* Pulse EN high->low to latch each 4-bit nibble */
+    ESP_RETURN_ON_ERROR(lcd_i2c_write(nibble_with_ctrl | LCD_EN), TAG, "lcd_i2c_write EN high failed");
+    esp_rom_delay_us(1);
+    ESP_RETURN_ON_ERROR(lcd_i2c_write(nibble_with_ctrl & ~LCD_EN), TAG, "lcd_i2c_write EN low failed");
+    esp_rom_delay_us(50);
+    return ESP_OK;
+}
+
+static esp_err_t lcd_send_byte(uint8_t value, bool rs)
+{
+    uint8_t ctrl = LCD_BACKLIGHT | (rs ? LCD_RS : 0);
+    uint8_t high = (value & 0xF0) | ctrl;
+    uint8_t low = ((value << 4) & 0xF0) | ctrl;
+
+    ESP_RETURN_ON_ERROR(lcd_write4(high), TAG, "write high nibble failed");
+    ESP_RETURN_ON_ERROR(lcd_write4(low), TAG, "write low nibble failed");
+    return ESP_OK;
+}
+
+static esp_err_t lcd_cmd(uint8_t cmd)
+{
+    return lcd_send_byte(cmd, false);
+}
+
+static esp_err_t lcd_data(uint8_t data)
+{
+    return lcd_send_byte(data, true);
+}
+
+static esp_err_t lcd_set_cursor(uint8_t col, uint8_t row)
+{
+    static const uint8_t row_offsets[] = {0x00, 0x40, 0x14, 0x54};
+    if (row > 3) {
+        row = 3;
+    }
+    return lcd_cmd((uint8_t)(0x80 | (col + row_offsets[row])));
+}
+
+static esp_err_t lcd_print(const char *text)
 {
     while (*text) {
-        oled_draw_char(x, y, *text, color);
-        x += 6;
-        if (x > OLED_WIDTH - 6) {
-            break;
-        }
+        ESP_RETURN_ON_ERROR(lcd_data((uint8_t)(*text)), TAG, "lcd_data failed");
         text++;
     }
-}
-
-static void show_employee_splash(void)
-{
-    oled_clear(false);
-    oled_draw_text(16, 2, "IGNARA TAG", true);
-    oled_draw_line(0, 12, OLED_WIDTH - 1, 12, true);
-    oled_draw_text(0, 18, "Name:", true);
-    oled_draw_text(0, 28, CONFIG_IGNARA_EMPLOYEE_NAME, true);
-    oled_draw_text(0, 42, "ID:", true);
-    oled_draw_text(0, 52, CONFIG_IGNARA_EMPLOYEE_ID, true);
-    ESP_ERROR_CHECK(oled_update());
-    vTaskDelay(pdMS_TO_TICKS(CONFIG_IGNARA_SPLASH_SECONDS * 1000));
-}
-
-static esp_err_t i2c_master_init(void)
-{
-    const i2c_config_t conf = {
-        .mode = I2C_MODE_MASTER,
-        .sda_io_num = I2C_SDA_GPIO,
-        .scl_io_num = I2C_SCL_GPIO,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .master.clk_speed = I2C_CLK_HZ,
-        .clk_flags = 0,
-    };
-
-    ESP_RETURN_ON_ERROR(i2c_param_config(I2C_PORT, &conf), TAG, "i2c param config failed");
-    ESP_RETURN_ON_ERROR(i2c_driver_install(I2C_PORT, conf.mode, 0, 0, 0), TAG, "i2c install failed");
     return ESP_OK;
 }
 
-static esp_err_t oled_init(void)
+static esp_err_t lcd_print_padded_line(const char *text)
 {
-    static const uint8_t init_seq[] = {
-        0xAE,
-        0xD5, 0x80,
-        0xA8, 0x3F,
-        0xD3, 0x00,
-        0x40,
-        0x8D, 0x14,
-        0x20, 0x00,
-        0xA1,
-        0xC8,
-        0xDA, 0x12,
-        0x81, 0xCF,
-        0xD9, 0xF1,
-        0xDB, 0x40,
-        0xA4,
-        0xA6,
-        0x2E,
-        0xAF,
-    };
-
-    for (size_t i = 0; i < sizeof(init_seq); i++) {
-        ESP_RETURN_ON_ERROR(oled_write_command(init_seq[i]), TAG, "oled init failed");
+    char out[LCD_COLS + 1];
+    size_t text_len = strlen(text);
+    for (size_t i = 0; i < LCD_COLS; i++) {
+        out[i] = (i < text_len) ? text[i] : ' ';
     }
+    out[LCD_COLS] = '\0';
+    return lcd_print(out);
+}
 
-    oled_clear(false);
-    ESP_RETURN_ON_ERROR(oled_update(), TAG, "initial clear failed");
+static esp_err_t lcd_print_scroll_window(const char *text, size_t offset)
+{
+    char window[LCD_COLS + 1];
+    size_t text_len = strlen(text);
+
+    for (size_t i = 0; i < LCD_COLS; i++) {
+        window[i] = text[(offset + i) % text_len];
+    }
+    window[LCD_COLS] = '\0';
+
+    return lcd_print(window);
+}
+
+static esp_err_t lcd_init_4bit(void)
+{
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    /* Initialization sequence required by HD44780 in 4-bit mode */
+    ESP_RETURN_ON_ERROR(lcd_write4(0x30 | LCD_BACKLIGHT), TAG, "init step 1 failed");
+    vTaskDelay(pdMS_TO_TICKS(5));
+    ESP_RETURN_ON_ERROR(lcd_write4(0x30 | LCD_BACKLIGHT), TAG, "init step 2 failed");
+    esp_rom_delay_us(150);
+    ESP_RETURN_ON_ERROR(lcd_write4(0x30 | LCD_BACKLIGHT), TAG, "init step 3 failed");
+    ESP_RETURN_ON_ERROR(lcd_write4(0x20 | LCD_BACKLIGHT), TAG, "set 4-bit mode failed");
+
+    ESP_RETURN_ON_ERROR(lcd_cmd(LCD_CMD_FUNCTION_SET), TAG, "function set failed");
+    ESP_RETURN_ON_ERROR(lcd_cmd(0x08), TAG, "display off failed");
+    ESP_RETURN_ON_ERROR(lcd_cmd(LCD_CMD_CLEAR), TAG, "clear failed");
+    vTaskDelay(pdMS_TO_TICKS(2));
+    ESP_RETURN_ON_ERROR(lcd_cmd(LCD_CMD_ENTRY_MODE), TAG, "entry mode failed");
+    ESP_RETURN_ON_ERROR(lcd_cmd(LCD_CMD_DISPLAY_ON), TAG, "display on failed");
+    ESP_RETURN_ON_ERROR(lcd_cmd(LCD_CMD_HOME), TAG, "home failed");
+    vTaskDelay(pdMS_TO_TICKS(2));
+
     return ESP_OK;
 }
 
-static void test_draw_lines(void)
+static void i2c_lcd_init(void)
 {
-    oled_clear(false);
-    for (int i = 0; i < OLED_WIDTH; i += 4) {
-        oled_draw_line(0, 0, i, OLED_HEIGHT - 1, true);
-    }
-    for (int i = 0; i < OLED_HEIGHT; i += 4) {
-        oled_draw_line(0, 0, OLED_WIDTH - 1, i, true);
-    }
-    ESP_ERROR_CHECK(oled_update());
-    vTaskDelay(pdMS_TO_TICKS(1200));
+    i2c_master_bus_config_t bus_cfg = {
+        .i2c_port = I2C_MASTER_NUM,
+        .sda_io_num = I2C_MASTER_SDA_IO,
+        .scl_io_num = I2C_MASTER_SCL_IO,
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true,
+    };
+    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &s_i2c_bus));
+
+    i2c_device_config_t dev_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = LCD_I2C_ADDRESS,
+        .scl_speed_hz = I2C_MASTER_FREQ_HZ,
+    };
+    ESP_ERROR_CHECK(i2c_master_bus_add_device(s_i2c_bus, &dev_cfg, &s_lcd_dev));
 }
 
-static void test_draw_shapes(void)
+static void button_init(void)
 {
-    oled_clear(false);
-    for (int i = 0; i < 28; i += 4) {
-        oled_draw_rect(i, i, OLED_WIDTH - (2 * i), OLED_HEIGHT - (2 * i), true);
-    }
-    oled_draw_circle(OLED_WIDTH / 2, OLED_HEIGHT / 2, 20, true);
-    oled_draw_circle(OLED_WIDTH / 2, OLED_HEIGHT / 2, 10, true);
-    ESP_ERROR_CHECK(oled_update());
-    vTaskDelay(pdMS_TO_TICKS(1200));
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << BUTTON_PIN),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
 }
 
+static void buzzer_init(void)
+{
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << BUZZER_PIN),
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = GPIO_PULLUP_DISABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    ESP_ERROR_CHECK(gpio_config(&io_conf));
+    ESP_ERROR_CHECK(gpio_set_level(BUZZER_PIN, 0));
+}
+
+/* -------------------------------------------------------------------------
+ * app_main
+ * ------------------------------------------------------------------------- */
 void app_main(void)
 {
-    ESP_LOGI(TAG, "Ignara employee tag booting");
+    ESP_LOGI(TAG, "Ignara employee tag booting (ESP32-C3 Super Mini)");
     ESP_LOGI(TAG, "  Employee name: %s", CONFIG_IGNARA_EMPLOYEE_NAME);
     ESP_LOGI(TAG, "  Employee id:   %s", CONFIG_IGNARA_EMPLOYEE_ID);
 
+    /* Default LCD screen content: line 1 = name, line 2 = E_ID: <id> */
+    snprintf(s_default_line1, sizeof(s_default_line1), "%s", CONFIG_IGNARA_EMPLOYEE_NAME);
+    snprintf(s_default_line2, sizeof(s_default_line2), "E_ID: %s", CONFIG_IGNARA_EMPLOYEE_ID);
+
     ESP_ERROR_CHECK(ble_advertising_init());
 
-    bool oled_ready = false;
-    if (i2c_master_init() == ESP_OK && oled_init() == ESP_OK) {
-        oled_ready = true;
-    } else {
-        ESP_LOGW(TAG, "OLED init failed, continuing with BLE advertising only");
-    }
+    i2c_lcd_init();
+    button_init();
+    buzzer_init();
+    ESP_LOGI(TAG, "I2C LCD init on SDA=%d, SCL=%d, addr=0x%02X",
+             I2C_MASTER_SDA_IO, I2C_MASTER_SCL_IO, LCD_I2C_ADDRESS);
+    ESP_LOGI(TAG, "Button init on GPIO%d (INPUT_PULLUP)", BUTTON_PIN);
+    ESP_LOGI(TAG, "Buzzer init on GPIO%d", BUZZER_PIN);
 
-    if (!oled_ready) {
-        while (true) {
-            if (!s_ble_adv_started) {
-                ESP_LOGW(TAG, "BLE advertising not started yet");
+    ESP_ERROR_CHECK(lcd_init_4bit());
+    ESP_ERROR_CHECK(lcd_set_cursor(0, 0));
+    ESP_ERROR_CHECK(lcd_print_padded_line(s_default_line1));
+    ESP_ERROR_CHECK(lcd_set_cursor(0, 1));
+    ESP_ERROR_CHECK(lcd_print_padded_line(s_default_line2));
+
+    bool meeting_mode = false;
+    size_t scroll_offset = 0;
+
+    while (1) {
+        s_current_button_state = gpio_get_level(BUTTON_PIN);
+
+        /* Button is wired active-low with INPUT_PULLUP */
+        if (s_last_button_state == 1 && s_current_button_state == 0) {
+            vTaskDelay(pdMS_TO_TICKS(20));
+            s_current_button_state = gpio_get_level(BUTTON_PIN);
+            if (s_current_button_state == 0) {
+                meeting_mode = !meeting_mode;
+                scroll_offset = 0;
+                if (meeting_mode) {
+                    ESP_LOGI(TAG, "Button pressed: switching to meeting screen");
+                    buzzer_beep(1, 120, 0);
+                    ESP_ERROR_CHECK(lcd_set_cursor(0, 0));
+                    ESP_ERROR_CHECK(lcd_print_padded_line(s_meeting_line1));
+                } else {
+                    ESP_LOGI(TAG, "Button pressed: switching to default screen");
+                    buzzer_beep(2, 80, 80);
+                    ESP_ERROR_CHECK(lcd_set_cursor(0, 0));
+                    ESP_ERROR_CHECK(lcd_print_padded_line(s_default_line1));
+                    ESP_ERROR_CHECK(lcd_set_cursor(0, 1));
+                    ESP_ERROR_CHECK(lcd_print_padded_line(s_default_line2));
+                }
             }
-            vTaskDelay(pdMS_TO_TICKS(2000));
         }
-    }
+        s_last_button_state = s_current_button_state;
 
-    show_employee_splash();
-
-    test_draw_lines();
-    test_draw_shapes();
-
-    oled_clear(false);
-    oled_draw_bitmap((OLED_WIDTH - LOGO_WIDTH) / 2, (OLED_HEIGHT - LOGO_HEIGHT) / 2, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT, true);
-    ESP_ERROR_CHECK(oled_update());
-    vTaskDelay(pdMS_TO_TICKS(1000));
-
-    ESP_ERROR_CHECK(oled_write_command(0xA7));
-    vTaskDelay(pdMS_TO_TICKS(500));
-    ESP_ERROR_CHECK(oled_write_command(0xA6));
-
-    int x = (int)(esp_random() % (OLED_WIDTH - LOGO_WIDTH));
-    int y = -LOGO_HEIGHT;
-    int dy = 2;
-    int time_to_drop = 1;
-
-    for (time_to_drop = 0; time_to_drop <= 100; time_to_drop++) {
-        oled_clear(false);
-        oled_draw_bitmap(x, y, logo_bmp, LOGO_WIDTH, LOGO_HEIGHT, true);
-        ESP_ERROR_CHECK(oled_update());
-
-        y += dy;
-        if (y >= OLED_HEIGHT) {
-            y = -LOGO_HEIGHT;
-            x = (int)(esp_random() % (OLED_WIDTH - LOGO_WIDTH));
+        if (meeting_mode) {
+            ESP_ERROR_CHECK(lcd_set_cursor(0, 1));
+            ESP_ERROR_CHECK(lcd_print_scroll_window(s_meeting_line2, scroll_offset));
+            scroll_offset = (scroll_offset + 1) % strlen(s_meeting_line2);
+            vTaskDelay(pdMS_TO_TICKS(300));
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(50));
         }
 
-        vTaskDelay(pdMS_TO_TICKS(100));
+        if (!s_ble_adv_started) {
+            static int warn_counter = 0;
+            if (++warn_counter >= 40) {
+                ESP_LOGW(TAG, "BLE advertising not started yet");
+                warn_counter = 0;
+            }
+        }
     }
-    esp_restart();
 }

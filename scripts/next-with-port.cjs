@@ -19,7 +19,7 @@ function runNext(commandMode, port, env) {
   return new Promise((resolve, reject) => {
     const child = spawn(
       "next",
-      [commandMode, "-p", String(port)],
+      [commandMode, "-H", "0.0.0.0", "-p", String(port)],
       {
         cwd: process.cwd(),
         env,

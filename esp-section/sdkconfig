@@ -848,8 +848,6 @@ CONFIG_PARTITION_TABLE_MD5=y
 #
 CONFIG_IGNARA_EMPLOYEE_NAME="rakesh"
 CONFIG_IGNARA_EMPLOYEE_ID="emp-001"
-# default:
-CONFIG_IGNARA_SPLASH_SECONDS=4
 # end of Ignara Employee Tag Configuration
 
 #
@@ -1701,6 +1699,17 @@ CONFIG_GDMA_OBJ_DRAM_SAFE=y
 # default:
 # CONFIG_GPIO_CTRL_FUNC_IN_IRAM is not set
 # end of ESP-Driver:GPIO Configurations
+
+#
+# ESP-Driver:I2C Configurations
+#
+# default:
+# CONFIG_I2C_ISR_IRAM_SAFE is not set
+# default:
+# CONFIG_I2C_ENABLE_DEBUG_LOG is not set
+# default:
+CONFIG_I2C_MASTER_ISR_HANDLER_IN_IRAM=y
+# end of ESP-Driver:I2C Configurations
 
 #
 # ESP-Driver:SPI Configurations
