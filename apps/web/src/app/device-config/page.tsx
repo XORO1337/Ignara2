@@ -8,9 +8,30 @@ import type {
   UsbConfigCommandBundle,
   UsbDeviceConfigRequest,
 } from "@ignara/sharedtypes";
-import { AppButton, AppContainer, AppInput, AppTextArea, GlassCard, StatusPill } from "../../components/ui";
 import { apiRequest } from "../../lib/api";
 import { useAuthStore, type SessionUser } from "../../store/auth-store";
+import { alpha } from "@mui/material/styles";
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  Checkbox,
+  Container,
+  Divider,
+  FormControl,
+  FormControlLabel,
+  FormGroup,
+  Grid,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  Switch,
+  TextField,
+  Typography,
+  Chip,
+} from "@mui/material";
 
 type UsbTargetsResponse = {
   tags: TagDeviceSummary[];
@@ -148,179 +169,211 @@ export default function DeviceConfigPage() {
   }
 
   return (
-    <AppContainer className="space-y-4">
-      <GlassCard variant="elevated">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="font-data text-xs uppercase tracking-[0.24em] text-text-dim">Admin + Dev Console</p>
-            <h1 className="mt-1 text-3xl font-semibold text-balance">USB Device Configuration Dashboard</h1>
-            <p className="mt-1 text-sm text-text-dim text-balance">
+    <Container maxWidth="xl" sx={{ py: { xs: 3, md: 4 }, display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Card
+        elevation={0}
+        sx={(theme) => ({
+          p: { xs: 2.5, md: 3.5 },
+          backgroundImage: `linear-gradient(140deg, ${alpha(theme.palette.primary.main, 0.18)}, transparent 55%),
+            linear-gradient(220deg, ${alpha(theme.palette.secondary.main, 0.16)}, transparent 60%)`,
+        })}
+      >
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Box>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 2, fontWeight: 700 }}>
+              Admin + Dev Console
+            </Typography>
+            <Typography variant="h3" sx={{ mt: 1 }}>USB Device Configuration Dashboard</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
               Configure employee tags and scanners over USB/ADB with BLE provisioning and password-protected feature toggles.
-            </p>
-          </div>
-          <StatusPill tone={hasUsbAccess ? "success" : "error"}>{hasUsbAccess ? "Access granted" : "Access denied"}</StatusPill>
-        </div>
-      </GlassCard>
+            </Typography>
+          </Box>
+          <Chip color={hasUsbAccess ? "success" : "error"} label={hasUsbAccess ? "Access granted" : "Access denied"} />
+        </Box>
+      </Card>
 
-      {isBootstrapping ? <p className="text-sm text-text-dim">Loading dashboard...</p> : null}
+      {isBootstrapping ? <Alert severity="info">Loading dashboard...</Alert> : null}
       {!isBootstrapping && !hasUsbAccess ? (
-        <GlassCard variant="soft">
-          <p className="text-sm text-error">
-            This dashboard is restricted to admins and allowlisted developer accounts.
-          </p>
-        </GlassCard>
+        <Alert severity="warning">This dashboard is restricted to admins and allowlisted developer accounts.</Alert>
       ) : null}
 
       {!isBootstrapping && hasUsbAccess ? (
-        <section className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-          <GlassCard className="space-y-3" variant="soft">
-            <h2 className="text-lg font-semibold">Provisioning Form</h2>
+        <Grid container spacing={3}>
+          <Grid item xs={12} xl={7}>
+            <Card elevation={0} sx={{ p: 3, height: '100%' }}>
+              <Stack spacing={2}>
+                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.6, fontWeight: 700 }}>
+                  Provisioning Form
+                </Typography>
 
-            <label className="block text-sm text-text-dim">Device Type</label>
-            <div className="flex gap-2">
-              <AppButton
-                type="button"
-                variant={deviceKind === "tag" ? "primary" : "secondary"}
-                size="sm"
-                onClick={() => setDeviceKind("tag")}
-              >
-                Tag
-              </AppButton>
-              <AppButton
-                type="button"
-                variant={deviceKind === "scanner" ? "primary" : "secondary"}
-                size="sm"
-                onClick={() => setDeviceKind("scanner")}
-              >
-                Scanner
-              </AppButton>
-            </div>
+                <Stack spacing={1}>
+                  <Typography variant="subtitle2" color="text.secondary">Device Type</Typography>
+                  <Stack direction="row" spacing={1}>
+                    <Button
+                      variant={deviceKind === "tag" ? "contained" : "outlined"}
+                      onClick={() => setDeviceKind("tag")}
+                    >
+                      Tag
+                    </Button>
+                    <Button
+                      variant={deviceKind === "scanner" ? "contained" : "outlined"}
+                      onClick={() => setDeviceKind("scanner")}
+                    >
+                      Scanner
+                    </Button>
+                  </Stack>
+                </Stack>
 
-            <label className="block text-sm text-text-dim">Device</label>
-            <select
-              className="w-full rounded-xl border border-outline bg-panel-strong px-3 py-2 text-sm"
-              value={deviceId}
-              onChange={(event) => setDeviceId(event.target.value)}
-            >
-              <option value="">Select device</option>
-              {activeDeviceOptions.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.id} ({entry.roomId ?? "unassigned"})
-                </option>
-              ))}
-            </select>
+                <FormControl fullWidth>
+                  <InputLabel>Device</InputLabel>
+                  <Select label="Device" value={deviceId} onChange={(event) => setDeviceId(event.target.value)}>
+                    <MenuItem value="">Select device</MenuItem>
+                    {activeDeviceOptions.map((entry) => (
+                      <MenuItem key={entry.id} value={entry.id}>
+                        {entry.id} ({entry.roomId ?? "unassigned"})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-            <label className="mt-2 flex items-center gap-2 text-sm text-text-dim">
-              <input
-                type="checkbox"
-                checked={enablePasswordProtection}
-                onChange={(event) => setEnablePasswordProtection(event.target.checked)}
-              />
-              Protect configuration toggles behind password security
-            </label>
-
-            {enablePasswordProtection ? (
-              <>
-                <label className="block text-sm text-text-dim">Configuration Security Password</label>
-                <AppInput
-                  type="password"
-                  value={secureConfigPassword}
-                  onChange={(event) => setSecureConfigPassword(event.target.value)}
-                  placeholder="Required for protected features"
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={enablePasswordProtection}
+                      onChange={(event) => setEnablePasswordProtection(event.target.checked)}
+                    />
+                  }
+                  label="Protect configuration toggles behind password security"
                 />
-              </>
-            ) : null}
 
-            <div className="mt-2 rounded-xl border border-outline/70 bg-panel-strong/60 p-3">
-              <p className="font-data text-xs uppercase tracking-[0.2em] text-text-dim">Feature Toggles</p>
-              <div className="mt-2 grid gap-2 text-sm text-text-dim">
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={features.locationTracking}
-                    onChange={(event) =>
-                      setFeatures((prev) => ({
-                        ...prev,
-                        locationTracking: event.target.checked,
-                      }))
-                    }
+                {enablePasswordProtection ? (
+                  <TextField
+                    label="Configuration Security Password"
+                    type="password"
+                    value={secureConfigPassword}
+                    onChange={(event) => setSecureConfigPassword(event.target.value)}
+                    placeholder="Required for protected features"
                   />
-                  Location tracking
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={features.notifications}
-                    onChange={(event) =>
-                      setFeatures((prev) => ({
-                        ...prev,
-                        notifications: event.target.checked,
-                      }))
-                    }
-                  />
-                  Notifications receive/publish
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={features.scannerPresence}
-                    onChange={(event) =>
-                      setFeatures((prev) => ({
-                        ...prev,
-                        scannerPresence: event.target.checked,
-                      }))
-                    }
-                  />
-                  Scanner presence detection
-                </label>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={features.debugMode}
-                    onChange={(event) =>
-                      setFeatures((prev) => ({
-                        ...prev,
-                        debugMode: event.target.checked,
-                      }))
-                    }
-                  />
-                  Debug mode
-                </label>
-              </div>
-            </div>
+                ) : null}
 
-            <AppButton type="button" onClick={() => void generateCommands()} loading={isGenerating} disabled={isGenerating}>
-              Generate USB/ADB Commands
-            </AppButton>
-          </GlassCard>
+                <Card elevation={0} sx={{ p: 2 }}>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.4, fontWeight: 700 }}>
+                    Feature Toggles
+                  </Typography>
+                  <FormGroup sx={{ mt: 1 }}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={features.locationTracking}
+                          onChange={(event) =>
+                            setFeatures((prev) => ({
+                              ...prev,
+                              locationTracking: event.target.checked,
+                            }))
+                          }
+                        />
+                      }
+                      label="Location tracking"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={features.notifications}
+                          onChange={(event) =>
+                            setFeatures((prev) => ({
+                              ...prev,
+                              notifications: event.target.checked,
+                            }))
+                          }
+                        />
+                      }
+                      label="Notifications receive/publish"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={features.scannerPresence}
+                          onChange={(event) =>
+                            setFeatures((prev) => ({
+                              ...prev,
+                              scannerPresence: event.target.checked,
+                            }))
+                          }
+                        />
+                      }
+                      label="Scanner presence detection"
+                    />
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={features.debugMode}
+                          onChange={(event) =>
+                            setFeatures((prev) => ({
+                              ...prev,
+                              debugMode: event.target.checked,
+                            }))
+                          }
+                        />
+                      }
+                      label="Debug mode"
+                    />
+                  </FormGroup>
+                </Card>
 
-          <GlassCard className="space-y-3" variant="soft">
-            <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold">ADB Command Bundle</h2>
-              <AppButton type="button" variant="secondary" size="sm" onClick={() => void copyCommands()} disabled={!bundle}>
-                Copy Commands
-              </AppButton>
-            </div>
+                <Button variant="contained" onClick={() => void generateCommands()} disabled={isGenerating}>
+                  {isGenerating ? "Generating..." : "Generate USB/ADB Commands"}
+                </Button>
+              </Stack>
+            </Card>
+          </Grid>
 
-            {!bundle ? <p className="text-sm text-text-dim">Generate a command bundle to prepare USB provisioning.</p> : null}
+          <Grid item xs={12} xl={5}>
+            <Card elevation={0} sx={{ p: 3, height: '100%' }}>
+              <Stack spacing={2}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.6, fontWeight: 700 }}>
+                    ADB Command Bundle
+                  </Typography>
+                  <Button variant="outlined" size="small" onClick={() => void copyCommands()} disabled={!bundle}>
+                    Copy Commands
+                  </Button>
+                </Box>
 
-            {bundle ? (
-              <>
-                <StatusPill tone="success">Generated at {bundle.generatedAtIso}</StatusPill>
-                <AppTextArea readOnly className="h-56 font-data text-xs" value={bundle.adbCommands.join("\n")} />
-                <p className="font-data text-xs uppercase tracking-[0.2em] text-text-dim">Generated Config JSON</p>
-                <AppTextArea readOnly className="h-56 font-data text-xs" value={bundle.configJson} />
-              </>
-            ) : null}
-          </GlassCard>
-        </section>
+                {!bundle ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Generate a command bundle to prepare USB provisioning.
+                  </Typography>
+                ) : null}
+
+                {bundle ? (
+                  <>
+                    <Chip color="success" label={`Generated at ${bundle.generatedAtIso}`} />
+                    <TextField
+                      label="ADB Commands"
+                      multiline
+                      minRows={8}
+                      value={bundle.adbCommands.join("\n")}
+                      InputProps={{ readOnly: true }}
+                    />
+                    <Divider />
+                    <TextField
+                      label="Generated Config JSON"
+                      multiline
+                      minRows={8}
+                      value={bundle.configJson}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </>
+                ) : null}
+              </Stack>
+            </Card>
+          </Grid>
+        </Grid>
       ) : null}
 
       {status ? (
-        <GlassCard variant="soft">
-          <p className="text-sm text-text-dim">{status}</p>
-        </GlassCard>
+        <Alert severity={status.includes("Failed") || status.includes("Could not") ? "error" : "info"}>{status}</Alert>
       ) : null}
-    </AppContainer>
+    </Container>
   );
 }

@@ -2,9 +2,10 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AppButton, AppContainer, AppInput, GlassCard } from "../../components/ui";
+import { alpha } from "@mui/material/styles";
 import { apiRequest } from "../../lib/api";
 import { useAuthStore, type SessionUser } from "../../store/auth-store";
+import { Container, Card, Typography, TextField, Button, Box, Alert, Stack } from "@mui/material";
 
 type LoginResponse = {
   user: SessionUser;
@@ -41,26 +42,105 @@ export default function LoginPage() {
   }
 
   return (
-    <AppContainer className="flex min-h-[70vh] max-w-xl items-center justify-center">
-      <GlassCard className="w-full">
-        <form onSubmit={onSubmit}>
-          <p className="font-data text-xs uppercase tracking-[0.24em] text-text-dim">Secure Access</p>
-          <h1 className="mt-1 text-3xl font-semibold">Sign In to Ignara</h1>
-          <p className="mt-1 text-sm text-text-dim">Use manager, admin, or employee credentials from seeded data.</p>
+    <Container maxWidth="md" sx={{ display: 'flex', minHeight: '75vh', alignItems: 'center', justifyContent: 'center' }}>
+      <Card
+        elevation={0}
+        sx={{
+          width: '100%',
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1.2fr 0.8fr' },
+          overflow: 'hidden',
+        }}
+      >
+        <Box
+          sx={(theme) => ({
+            p: { xs: 4, md: 5 },
+            backgroundImage: `linear-gradient(145deg, ${alpha(theme.palette.primary.main, 0.2)}, transparent 55%),
+              linear-gradient(240deg, ${alpha(theme.palette.secondary.main, 0.18)}, transparent 60%)`,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: 2,
+          })}
+        >
+          <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 2.6, fontWeight: 700 }}>
+            Secure Access
+          </Typography>
+          <Typography variant="h3" sx={{ maxWidth: 360 }}>
+            Sign in to the Ignara control grid.
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 360 }}>
+            Use seeded manager, admin, or employee credentials to enter the live environment.
+          </Typography>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+            <Box
+              sx={(theme) => ({
+                px: 1.5,
+                py: 0.5,
+                borderRadius: 999,
+                border: `1px solid ${alpha(theme.palette.primary.main, 0.3)}`,
+                backgroundColor: alpha(theme.palette.primary.main, 0.1),
+              })}
+            >
+              <Typography variant="caption" color="text.secondary">
+                manager@ignara.local
+              </Typography>
+            </Box>
+            <Box
+              sx={(theme) => ({
+                px: 1.5,
+                py: 0.5,
+                borderRadius: 999,
+                border: `1px solid ${alpha(theme.palette.secondary.main, 0.3)}`,
+                backgroundColor: alpha(theme.palette.secondary.main, 0.1),
+              })}
+            >
+              <Typography variant="caption" color="text.secondary">
+                admin@ignara.local
+              </Typography>
+            </Box>
+          </Stack>
+        </Box>
 
-          <label className="mt-6 block text-sm text-text-dim">Email</label>
-          <AppInput className="mt-1" value={email} onChange={(event) => setEmail(event.target.value)} />
+        <Box component="form" onSubmit={onSubmit} sx={{ p: { xs: 4, md: 5 }, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.8, fontWeight: 700 }}>
+            Workspace Login
+          </Typography>
+          <Typography variant="h5" sx={{ fontWeight: 700 }}>
+            Welcome back
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Enter your credentials to access dashboards and device operations.
+          </Typography>
 
-          <label className="mt-4 block text-sm text-text-dim">Password</label>
-          <AppInput type="password" className="mt-1" value={password} onChange={(event) => setPassword(event.target.value)} />
+          <TextField
+            fullWidth
+            label="Email"
+            variant="outlined"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
 
-          {error ? <p className="mt-3 rounded-xl border border-error/35 bg-error/10 px-3 py-2 text-sm text-error">{error}</p> : null}
+          <TextField
+            fullWidth
+            type="password"
+            label="Password"
+            variant="outlined"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
 
-          <AppButton type="submit" className="mt-6 w-full">
+          {error ? (
+            <Alert severity="error">
+              {error}
+            </Alert>
+          ) : null}
+
+          <Button type="submit" variant="contained" color="primary" size="large" fullWidth>
             Sign In
-          </AppButton>
-        </form>
-      </GlassCard>
-    </AppContainer>
+          </Button>
+        </Box>
+      </Card>
+    </Container>
   );
 }

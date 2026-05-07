@@ -1,60 +1,119 @@
 import Link from "next/link";
-import { AppContainer, GlassCard, StatusPill } from "../components/ui";
+import { alpha } from "@mui/material/styles";
+import { Container, Box, Typography, Button, Paper, Grid, Stack, Chip } from "@mui/material";
 
 export default function HomePage() {
   return (
-    <AppContainer className="space-y-6 py-10 md:py-14">
-      <GlassCard className="relative overflow-hidden p-7 md:p-10">
-        <div className="absolute right-0 top-0 h-48 w-48 translate-x-1/3 -translate-y-1/3 rounded-full bg-accent/25 blur-3xl" />
-        <p className="font-data text-xs uppercase tracking-[0.28em] text-text-dim">Ignara Platform</p>
-        <h1 className="mt-4 max-w-4xl text-4xl font-semibold leading-tight md:text-6xl">
-          Smart Office Control Center With Live Spatial Intelligence
-        </h1>
-        <p className="mt-5 max-w-3xl text-base text-text-dim md:text-lg">
-          Ignara unifies room-level employee visibility, device operations, and onsite notifications across one self-hosted stack.
-          Managers monitor occupancy in real time, provision tag BLE behavior remotely, and deliver team messages instantly.
-        </p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link
-            href="/login"
-            className="inline-flex items-center justify-center rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-contrast transition duration-200 hover:bg-accent/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-          >
-            Sign In To Workspace
-          </Link>
-          <Link
-            href="/dashboard"
-            className="inline-flex items-center justify-center rounded-xl border border-outline bg-panel px-4 py-2 text-sm font-semibold text-text transition duration-200 hover:bg-panel-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-          >
-            Open Live Dashboard
-          </Link>
-          <StatusPill tone="success">Realtime Enabled</StatusPill>
-          <StatusPill tone="neutral">Self Hosted</StatusPill>
-        </div>
-      </GlassCard>
+    <Container maxWidth="xl" sx={{ py: { xs: 4, md: 6 }, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <Paper
+        elevation={0}
+        sx={(theme) => ({
+          position: 'relative',
+          overflow: 'hidden',
+          p: { xs: 4, md: 6 },
+          borderRadius: 6,
+          border: 1,
+          borderColor: 'divider',
+          backgroundImage: `linear-gradient(140deg, ${alpha(theme.palette.primary.main, 0.16)}, transparent 40%),
+            linear-gradient(220deg, ${alpha(theme.palette.secondary.main, 0.14)}, transparent 45%)`,
+        })}
+      >
+        <Grid container spacing={4} alignItems="center">
+          <Grid item xs={12} md={7}>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 2.6, fontWeight: 700 }}>
+              Ignara Platform
+            </Typography>
+            <Typography variant="h2" sx={{ mt: 2, mb: 2, maxWidth: 640 }}>
+              Smart office operations with a cinematic view of every room.
+            </Typography>
+            <Typography variant="body1" color="text.secondary" sx={{ mb: 4, maxWidth: 600 }}>
+              Ignara brings live presence, device orchestration, and on-site notifications into one workspace.
+              Track occupancy in real time, coordinate BLE provisioning, and deliver announcements with one console.
+            </Typography>
+            <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', gap: 2 }}>
+              <Button component={Link} href="/login" variant="contained" color="primary" size="large">
+                Sign In To Workspace
+              </Button>
+              <Button component={Link} href="/dashboard" variant="outlined" color="primary" size="large">
+                Open Live Dashboard
+              </Button>
+            </Stack>
+          </Grid>
+          <Grid item xs={12} md={5}>
+            <Stack spacing={2}>
+              <Paper sx={{ p: 2.5 }} elevation={0}>
+                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.6, fontWeight: 700 }}>
+                  Live Signals
+                </Typography>
+                <Typography variant="h6" sx={{ mt: 1 }}>
+                  Real-time room presence
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Socket-powered room presence with contextual overlays for managers and employees.
+                </Typography>
+              </Paper>
+              <Paper sx={{ p: 2.5 }} elevation={0}>
+                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.6, fontWeight: 700 }}>
+                  Device Control
+                </Typography>
+                <Typography variant="h6" sx={{ mt: 1 }}>
+                  BLE provisioning hub
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Generate USB/ADB bundles, manage tag provisioning, and audit device health in one workflow.
+                </Typography>
+              </Paper>
+            </Stack>
+          </Grid>
+        </Grid>
+        <Stack direction="row" spacing={1} sx={{ mt: 3, flexWrap: 'wrap', gap: 1 }}>
+          <Chip label="Realtime Enabled" color="success" size="small" />
+          <Chip label="Self Hosted" size="small" />
+          <Chip label="MUI Reimagined" size="small" />
+        </Stack>
+      </Paper>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <GlassCard>
-          <p className="font-data text-xs uppercase tracking-[0.2em] text-text-dim">Live Location Layer</p>
-          <h2 className="mt-2 text-xl font-semibold">Room-Scoped Tracking</h2>
-          <p className="mt-2 text-sm text-text-dim">
-            Scanner events flow through MQTT and Socket.io to update map presence instantly for managers and admins.
-          </p>
-        </GlassCard>
-        <GlassCard>
-          <p className="font-data text-xs uppercase tracking-[0.2em] text-text-dim">Device Operations</p>
-          <h2 className="mt-2 text-xl font-semibold">Tag BLE Provisioning</h2>
-          <p className="mt-2 text-sm text-text-dim">
-            Configure BLE behavior for field tags from the management console and deploy updates with USB provisioning bundles.
-          </p>
-        </GlassCard>
-        <GlassCard>
-          <p className="font-data text-xs uppercase tracking-[0.2em] text-text-dim">Manager Broadcasts</p>
-          <h2 className="mt-2 text-xl font-semibold">Notification Routing</h2>
-          <p className="mt-2 text-sm text-text-dim">
-            Send targeted or broadcast announcements through API-backed channels integrated with your existing infrastructure.
-          </p>
-        </GlassCard>
-      </section>
-    </AppContainer>
+      <Grid container spacing={3}>
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: 3, height: '100%' }} elevation={0}>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 700 }}>
+              Live Location Layer
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 1, mb: 1 }}>
+              Room-Scoped Tracking
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Scanner events flow through MQTT and Socket.io to update map presence instantly for managers and admins.
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: 3, height: '100%' }} elevation={0}>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 700 }}>
+              Device Operations
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 1, mb: 1 }}>
+              Tag BLE Provisioning
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Configure BLE behavior for field tags from the management console and deploy updates with USB provisioning bundles.
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Paper sx={{ p: 3, height: '100%' }} elevation={0}>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 700 }}>
+              Manager Broadcasts
+            </Typography>
+            <Typography variant="h6" sx={{ mt: 1, mb: 1 }}>
+              Notification Routing
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Send targeted or broadcast announcements through API-backed channels integrated with your existing infrastructure.
+            </Typography>
+          </Paper>
+        </Grid>
+      </Grid>
+    </Container>
   );
 }

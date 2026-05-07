@@ -7,7 +7,24 @@ import type { Socket } from "socket.io-client";
 import { apiRequest } from "../../lib/api";
 import { createLocationSocket } from "../../lib/socket";
 import { parseMapEditorData, pickActiveMap } from "../../lib/map-config";
-import { AppButton, AppContainer, AppInput, GlassCard, StatusPill } from "../../components/ui";
+import { alpha } from "@mui/material/styles";
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  Chip,
+  Container,
+  Divider,
+  FormControl,
+  Grid,
+  InputLabel,
+  MenuItem,
+  Select,
+  Stack,
+  TextField,
+  Typography,
+} from "@mui/material";
 import { useAuthStore, type SessionUser } from "../../store/auth-store";
 import { useMapEditorStore } from "../../store/map-editor-store";
 
@@ -352,432 +369,471 @@ export default function MapEditorPage() {
   }
 
   return (
-    <AppContainer className="space-y-4">
-      <GlassCard variant="elevated">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <p className="font-data text-xs uppercase tracking-[0.22em] text-text-dim">Map Editor</p>
-            <h1 className="mt-1 text-3xl font-semibold text-balance">Interactive Floor Planner</h1>
-            <p className="mt-1 text-sm text-text-dim">Three-panel editor with drag-and-drop, live employee props, and SVG floor-plan support.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusPill tone={socketState === "connected" ? "success" : socketState === "connecting" ? "warning" : "neutral"} pulse>
-              Socket: {socketState}
-            </StatusPill>
-            <StatusPill tone={hasAccess ? "success" : "error"}>{hasAccess ? "Access: allowed" : "Access: denied"}</StatusPill>
-          </div>
-        </div>
-      </GlassCard>
+    <Container maxWidth="xl" sx={{ py: { xs: 3, md: 4 }, display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Card
+        elevation={0}
+        sx={(theme) => ({
+          p: { xs: 2.5, md: 3.5 },
+          backgroundImage: `linear-gradient(140deg, ${alpha(theme.palette.primary.main, 0.18)}, transparent 55%),
+            linear-gradient(220deg, ${alpha(theme.palette.secondary.main, 0.16)}, transparent 60%)`,
+        })}
+      >
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Box>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 2, fontWeight: 700 }}>
+              Map Editor
+            </Typography>
+            <Typography variant="h3" sx={{ mt: 1 }}>Interactive Floor Planner</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Three-panel editor with drag-and-drop, live employee props, and SVG floor-plan support.
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+            <Chip
+              size="small"
+              color={socketState === "connected" ? "success" : socketState === "connecting" ? "warning" : "default"}
+              label={`Socket: ${socketState}`}
+            />
+            <Chip size="small" color={hasAccess ? "success" : "error"} label={hasAccess ? "Access: allowed" : "Access: denied"} />
+          </Stack>
+        </Box>
+      </Card>
 
-      <GlassCard variant="soft">
-        <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
-          <label className="text-sm text-text-dim">
-            Map Name
-            <AppInput className="mt-1" value={mapName} onChange={(event) => setMapName(event.target.value)} />
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusPill tone={isLoading ? "warning" : "success"}>{isLoading ? "Loading map" : "Map loaded"}</StatusPill>
-            <StatusPill tone="neutral">Rooms: {rooms.length}</StatusPill>
-            <StatusPill tone="neutral">Props: {props.length}</StatusPill>
-          </div>
-          <AppButton type="button" onClick={() => void saveMap()} loading={isSaving} disabled={isSaving || !hasAccess}>
-            Save Map JSON
-          </AppButton>
-        </div>
-      </GlassCard>
+      <Card elevation={0} sx={{ p: { xs: 2.5, md: 3 } }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={5}>
+            <TextField
+              fullWidth
+              label="Map Name"
+              value={mapName}
+              onChange={(event) => setMapName(event.target.value)}
+            />
+          </Grid>
+          <Grid item xs={12} md={5}>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+              <Chip size="small" color={isLoading ? "warning" : "success"} label={isLoading ? "Loading map" : "Map loaded"} />
+              <Chip size="small" variant="outlined" label={`Rooms: ${rooms.length}`} />
+              <Chip size="small" variant="outlined" label={`Props: ${props.length}`} />
+            </Stack>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <Button
+              fullWidth
+              variant="contained"
+              onClick={() => void saveMap()}
+              disabled={isSaving || !hasAccess}
+            >
+              {isSaving ? "Saving..." : "Save Map JSON"}
+            </Button>
+          </Grid>
+        </Grid>
+      </Card>
 
       {!hasAccess && !isLoading ? (
-        <GlassCard variant="soft">
-          <p className="text-sm text-error">Map Editor is restricted to admins and dev allowlisted users only.</p>
-        </GlassCard>
+        <Alert severity="warning">Map Editor is restricted to admins and dev allowlisted users only.</Alert>
       ) : null}
 
       {hasAccess ? (
-        <section className="grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
-          <GlassCard className="space-y-3" variant="soft">
-            <h2 className="text-lg font-semibold">Components</h2>
-            <p className="text-xs text-text-dim">Drag these elements into the map canvas.</p>
+        <Grid container spacing={3}>
+          <Grid item xs={12} lg={3}>
+            <Card elevation={0} sx={{ p: 2.5, height: '100%' }}>
+              <Stack spacing={2}>
+                <Box>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.6, fontWeight: 700 }}>
+                    Components
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Drag these elements into the map canvas.
+                  </Typography>
+                </Box>
 
-            <button
-              type="button"
-              draggable
-              onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "room")}
-              className="w-full rounded-xl border border-outline bg-panel-strong px-3 py-2 text-left text-sm hover:bg-panel"
-            >
-              Room Zone
-            </button>
-
-            <button
-              type="button"
-              draggable
-              onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop")}
-              className="w-full rounded-xl border border-outline bg-panel-strong px-3 py-2 text-left text-sm hover:bg-panel"
-            >
-              Prop Element
-            </button>
-
-            <button
-              type="button"
-              draggable
-              onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop-player-male")}
-              className="w-full rounded-xl border border-outline bg-panel-strong px-3 py-2 text-left text-sm hover:bg-panel"
-            >
-              Player Prop (Male)
-            </button>
-
-            <button
-              type="button"
-              draggable
-              onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop-player-female")}
-              className="w-full rounded-xl border border-outline bg-panel-strong px-3 py-2 text-left text-sm hover:bg-panel"
-            >
-              Player Prop (Female)
-            </button>
-
-            <button
-              type="button"
-              draggable
-              onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop-beacon")}
-              className="w-full rounded-xl border border-outline bg-panel-strong px-3 py-2 text-left text-sm hover:bg-panel"
-            >
-              Beacon (Room ESP32)
-            </button>
-
-            <label className="block text-sm text-text-dim">
-              Upload SVG Floor Plan
-              <input className="mt-1 block w-full text-xs" type="file" accept=".svg,image/svg+xml" onChange={(event) => void importSvg(event)} />
-            </label>
-
-            <div className="border-t border-outline/50 pt-3">
-              <p className="text-xs text-text-dim mb-2">Canvas Size (px)</p>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-xs text-text-dim">
-                  Width
-                  <AppInput
-                    type="number"
-                    min={400}
-                    max={5000}
-                    value={canvasSize.width}
-                    onChange={(event) => setCanvasSize({ width: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="text-xs text-text-dim">
-                  Height
-                  <AppInput
-                    type="number"
-                    min={300}
-                    max={5000}
-                    value={canvasSize.height}
-                    onChange={(event) => setCanvasSize({ height: Number(event.target.value) })}
-                  />
-                </label>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-1">
-                <AppButton type="button" size="sm" variant="secondary" onClick={() => setCanvasSize({ width: 1200, height: 720 })}>
-                  Small
-                </AppButton>
-                <AppButton type="button" size="sm" variant="secondary" onClick={() => setCanvasSize({ width: 1920, height: 1080 })}>
-                  HD
-                </AppButton>
-                <AppButton type="button" size="sm" variant="secondary" onClick={() => setCanvasSize({ width: 2560, height: 1440 })}>
-                  2K
-                </AppButton>
-                <AppButton type="button" size="sm" variant="secondary" onClick={() => setCanvasSize({ width: 3840, height: 2160 })}>
-                  4K
-                </AppButton>
-              </div>
-            </div>
-
-            {background ? (
-              <AppButton type="button" variant="secondary" size="sm" onClick={() => selectTarget({ type: "background" })}>
-                Select Background
-              </AppButton>
-            ) : null}
-
-            <div className="border-t border-outline/50 pt-3 space-y-2">
-              <p className="text-xs text-text-dim">Broadcast to Room Beacons</p>
-              <label className="block text-xs text-text-dim">
-                Message
-                <AppInput
-                  value={beaconMessage}
-                  onChange={(event) => setBeaconMessage(event.target.value)}
-                  placeholder="Meeting starting in 5 minutes"
-                />
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="text-xs text-text-dim">
-                  Priority
-                  <select
-                    className="mt-1 w-full rounded-xl border border-outline/70 bg-panel px-2 py-2 text-xs text-text"
-                    value={beaconPriority}
-                    onChange={(event) => setBeaconPriority(event.target.value as "low" | "normal" | "high")}
+                <Stack spacing={1}>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    fullWidth
+                    draggable
+                    onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "room")}
+                    sx={{ justifyContent: 'flex-start' }}
                   >
-                    <option value="low">Low</option>
-                    <option value="normal">Normal</option>
-                    <option value="high">High</option>
-                  </select>
-                </label>
-                <label className="text-xs text-text-dim">
-                  TTL (s)
-                  <AppInput
-                    type="number"
-                    min={5}
-                    max={3600}
-                    value={beaconTtlSeconds}
-                    onChange={(event) => setBeaconTtlSeconds(Number(event.target.value) || 60)}
-                  />
-                </label>
-              </div>
-              <label className="block text-xs text-text-dim">
-                Target Room ID (blank = all rooms)
-                <AppInput
-                  value={beaconTargetRoomId}
-                  onChange={(event) => setBeaconTargetRoomId(event.target.value)}
-                  placeholder="room-a"
-                />
-              </label>
-              <AppButton
-                type="button"
-                size="sm"
-                onClick={() => void broadcastBeaconNotification()}
-                loading={isBroadcasting}
-                disabled={isBroadcasting || !hasAccess}
-              >
-                Push to Beacons
-              </AppButton>
-            </div>
-          </GlassCard>
-
-          <MapEditorCanvas locations={locations} />
-
-          <GlassCard className="space-y-3" variant="soft">
-            <h2 className="text-lg font-semibold">Properties</h2>
-
-            {selectedRoom ? (
-              <>
-                <p className="text-xs uppercase tracking-[0.2em] text-text-dim">Selected Room</p>
-                <label className="block text-sm text-text-dim">
-                  Label
-                  <AppInput value={selectedRoom.label} onChange={(event) => updateRoom(selectedRoom.id, { label: event.target.value })} />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Scanner Device ID
-                  <AppInput
-                    value={selectedRoom.scannerDeviceId ?? ""}
-                    onChange={(event) => updateRoom(selectedRoom.id, { scannerDeviceId: event.target.value || undefined })}
-                    placeholder="scanner-01"
-                  />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Beacon IDs (comma separated)
-                  <AppInput
-                    value={(selectedRoom.beaconIds ?? []).join(", ")}
-                    onChange={(event) => {
-                      const beaconIds = event.target.value
-                        .split(",")
-                        .map((entry) => entry.trim())
-                        .filter(Boolean);
-                      updateRoom(selectedRoom.id, {
-                        beaconIds,
-                        beaconId: beaconIds[0],
-                      });
-                    }}
-                    placeholder="beacon-room-a, beacon-room-a-2"
-                  />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  X
-                  <AppInput
-                    type="number"
-                    value={selectedRoom.x}
-                    onChange={(event) => updateRoom(selectedRoom.id, { x: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Y
-                  <AppInput
-                    type="number"
-                    value={selectedRoom.y}
-                    onChange={(event) => updateRoom(selectedRoom.id, { y: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Width
-                  <AppInput
-                    type="number"
-                    value={selectedRoom.w}
-                    onChange={(event) => updateRoom(selectedRoom.id, { w: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Height
-                  <AppInput
-                    type="number"
-                    value={selectedRoom.h}
-                    onChange={(event) => updateRoom(selectedRoom.id, { h: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Rotation
-                  <AppInput
-                    type="number"
-                    value={selectedRoom.rotation ?? 0}
-                    onChange={(event) => updateRoom(selectedRoom.id, { rotation: Number(event.target.value) })}
-                  />
-                </label>
-                <AppButton type="button" variant="danger" onClick={() => removeRoom(selectedRoom.id)}>
-                  Delete Room
-                </AppButton>
-              </>
-            ) : null}
-
-            {selectedProp ? (
-              <>
-                <p className="text-xs uppercase tracking-[0.2em] text-text-dim">Selected Prop</p>
-                <label className="block text-sm text-text-dim">
-                  Label
-                  <AppInput value={selectedProp.label} onChange={(event) => updateProp(selectedProp.id, { label: event.target.value })} />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Fill
-                  <AppInput value={selectedProp.fill ?? ""} onChange={(event) => updateProp(selectedProp.id, { fill: event.target.value })} />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Prop Type
-                  <select
-                    className="mt-1 w-full rounded-xl border border-outline/70 bg-panel px-3 py-2 text-sm text-text"
-                    value={selectedProp.propType}
-                    onChange={(event) =>
-                      updateProp(selectedProp.id, {
-                        propType: event.target.value as "generic" | "player-male" | "player-female" | "beacon",
-                      })
-                    }
+                    Room Zone
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    fullWidth
+                    draggable
+                    onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop")}
+                    sx={{ justifyContent: 'flex-start' }}
                   >
-                    <option value="generic">Generic</option>
-                    <option value="player-male">Player Male</option>
-                    <option value="player-female">Player Female</option>
-                    <option value="beacon">Beacon (Room ESP32)</option>
-                  </select>
-                </label>
+                    Prop Element
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    fullWidth
+                    draggable
+                    onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop-player-male")}
+                    sx={{ justifyContent: 'flex-start' }}
+                  >
+                    Player Prop (Male)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    fullWidth
+                    draggable
+                    onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop-player-female")}
+                    sx={{ justifyContent: 'flex-start' }}
+                  >
+                    Player Prop (Female)
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outlined"
+                    fullWidth
+                    draggable
+                    onDragStart={(event) => event.dataTransfer.setData("application/x-ignara-palette", "prop-beacon")}
+                    sx={{ justifyContent: 'flex-start' }}
+                  >
+                    Beacon (Room ESP32)
+                  </Button>
+                </Stack>
 
-                {selectedProp.propType === "beacon" ? (
-                  <>
-                    <label className="block text-sm text-text-dim">
-                      Beacon Device ID
-                      <AppInput
-                        value={selectedProp.beaconDeviceId ?? ""}
-                        onChange={(event) =>
-                          updateProp(selectedProp.id, { beaconDeviceId: event.target.value || undefined })
-                        }
-                        placeholder="beacon-room-a"
-                      />
-                    </label>
-                    <label className="block text-sm text-text-dim">
-                      Covers Room ID
-                      <AppInput
-                        value={selectedProp.beaconRoomId ?? ""}
-                        onChange={(event) =>
-                          updateProp(selectedProp.id, { beaconRoomId: event.target.value || undefined })
-                        }
-                        placeholder="room-a"
-                      />
-                    </label>
-                  </>
+                <Divider />
+
+                <Button component="label" variant="outlined">
+                  Upload SVG Floor Plan
+                  <input hidden type="file" accept=".svg,image/svg+xml" onChange={(event) => void importSvg(event)} />
+                </Button>
+
+                <Box>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.2, fontWeight: 700 }}>
+                    Canvas Size (px)
+                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ mt: 1 }}>
+                    <TextField
+                      label="Width"
+                      type="number"
+                      size="small"
+                      value={canvasSize.width}
+                      onChange={(event) => setCanvasSize({ width: Number(event.target.value) })}
+                    />
+                    <TextField
+                      label="Height"
+                      type="number"
+                      size="small"
+                      value={canvasSize.height}
+                      onChange={(event) => setCanvasSize({ height: Number(event.target.value) })}
+                    />
+                  </Stack>
+                  <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+                    <Button size="small" variant="outlined" onClick={() => setCanvasSize({ width: 1200, height: 720 })}>
+                      Small
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => setCanvasSize({ width: 1920, height: 1080 })}>
+                      HD
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => setCanvasSize({ width: 2560, height: 1440 })}>
+                      2K
+                    </Button>
+                    <Button size="small" variant="outlined" onClick={() => setCanvasSize({ width: 3840, height: 2160 })}>
+                      4K
+                    </Button>
+                  </Stack>
+                </Box>
+
+                {background ? (
+                  <Button variant="outlined" onClick={() => selectTarget({ type: "background" })}>
+                    Select Background
+                  </Button>
                 ) : null}
-                <label className="block text-sm text-text-dim">
-                  X
-                  <AppInput
-                    type="number"
-                    value={selectedProp.x}
-                    onChange={(event) => updateProp(selectedProp.id, { x: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Y
-                  <AppInput
-                    type="number"
-                    value={selectedProp.y}
-                    onChange={(event) => updateProp(selectedProp.id, { y: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Width
-                  <AppInput
-                    type="number"
-                    value={selectedProp.w}
-                    onChange={(event) => updateProp(selectedProp.id, { w: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Height
-                  <AppInput
-                    type="number"
-                    value={selectedProp.h}
-                    onChange={(event) => updateProp(selectedProp.id, { h: Number(event.target.value) })}
-                  />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Rotation
-                  <AppInput
-                    type="number"
-                    value={selectedProp.rotation}
-                    onChange={(event) => updateProp(selectedProp.id, { rotation: Number(event.target.value) })}
-                  />
-                </label>
-                <AppButton type="button" variant="danger" onClick={() => removeProp(selectedProp.id)}>
-                  Delete Prop
-                </AppButton>
-              </>
-            ) : null}
 
-            {selectedTarget?.type === "background" && background ? (
-              <>
-                <p className="text-xs uppercase tracking-[0.2em] text-text-dim">SVG Background</p>
-                <label className="block text-sm text-text-dim">
-                  X
-                  <AppInput type="number" value={background.x} onChange={(event) => updateBackground({ x: Number(event.target.value) })} />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Y
-                  <AppInput type="number" value={background.y} onChange={(event) => updateBackground({ y: Number(event.target.value) })} />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Width
-                  <AppInput type="number" value={background.w} onChange={(event) => updateBackground({ w: Number(event.target.value) })} />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Height
-                  <AppInput type="number" value={background.h} onChange={(event) => updateBackground({ h: Number(event.target.value) })} />
-                </label>
-                <label className="block text-sm text-text-dim">
-                  Opacity
-                  <AppInput
-                    type="number"
-                    min={0.1}
-                    max={1}
-                    step={0.05}
-                    value={background.opacity}
-                    onChange={(event) => updateBackground({ opacity: Number(event.target.value) })}
-                  />
-                </label>
-                <AppButton type="button" variant="danger" onClick={() => setBackground(null)}>
-                  Remove SVG Background
-                </AppButton>
-              </>
-            ) : null}
+                <Divider />
 
-            {!selectedRoom && !selectedProp && selectedTarget?.type !== "background" ? (
-              <p className="text-sm text-text-dim">Select a room, prop, or background to edit properties.</p>
-            ) : null}
-          </GlassCard>
-        </section>
+                <Box>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.2, fontWeight: 700 }}>
+                    Broadcast to Room Beacons
+                  </Typography>
+                  <Stack spacing={1.5} sx={{ mt: 1 }}>
+                    <TextField
+                      label="Message"
+                      value={beaconMessage}
+                      onChange={(event) => setBeaconMessage(event.target.value)}
+                      placeholder="Meeting starting in 5 minutes"
+                      multiline
+                      minRows={2}
+                    />
+                    <Stack direction="row" spacing={1}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Priority</InputLabel>
+                        <Select
+                          label="Priority"
+                          value={beaconPriority}
+                          onChange={(event) => setBeaconPriority(event.target.value as "low" | "normal" | "high")}
+                        >
+                          <MenuItem value="low">Low</MenuItem>
+                          <MenuItem value="normal">Normal</MenuItem>
+                          <MenuItem value="high">High</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <TextField
+                        label="TTL (s)"
+                        type="number"
+                        size="small"
+                        value={beaconTtlSeconds}
+                        onChange={(event) => setBeaconTtlSeconds(Number(event.target.value) || 60)}
+                      />
+                    </Stack>
+                    <TextField
+                      label="Target Room ID (blank = all rooms)"
+                      value={beaconTargetRoomId}
+                      onChange={(event) => setBeaconTargetRoomId(event.target.value)}
+                      placeholder="room-a"
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={() => void broadcastBeaconNotification()}
+                      disabled={isBroadcasting || !hasAccess}
+                    >
+                      {isBroadcasting ? "Broadcasting..." : "Push to Beacons"}
+                    </Button>
+                  </Stack>
+                </Box>
+              </Stack>
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} lg={6}>
+            <Card elevation={0} sx={{ p: 2, height: '100%', minHeight: 520 }}>
+              <MapEditorCanvas locations={locations} />
+            </Card>
+          </Grid>
+
+          <Grid item xs={12} lg={3}>
+            <Card elevation={0} sx={{ p: 2.5, height: '100%' }}>
+              <Stack spacing={2}>
+                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.6, fontWeight: 700 }}>
+                  Properties
+                </Typography>
+
+                {selectedRoom ? (
+                  <Stack spacing={1.5}>
+                    <Typography variant="subtitle2" color="text.secondary">Selected Room</Typography>
+                    <TextField
+                      label="Label"
+                      value={selectedRoom.label}
+                      onChange={(event) => updateRoom(selectedRoom.id, { label: event.target.value })}
+                    />
+                    <TextField
+                      label="Scanner Device ID"
+                      value={selectedRoom.scannerDeviceId ?? ""}
+                      onChange={(event) => updateRoom(selectedRoom.id, { scannerDeviceId: event.target.value || undefined })}
+                      placeholder="scanner-01"
+                    />
+                    <TextField
+                      label="Beacon IDs (comma separated)"
+                      value={(selectedRoom.beaconIds ?? []).join(", ")}
+                      onChange={(event) => {
+                        const beaconIds = event.target.value
+                          .split(",")
+                          .map((entry) => entry.trim())
+                          .filter(Boolean);
+                        updateRoom(selectedRoom.id, {
+                          beaconIds,
+                          beaconId: beaconIds[0],
+                        });
+                      }}
+                      placeholder="beacon-room-a, beacon-room-a-2"
+                    />
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        label="X"
+                        type="number"
+                        value={selectedRoom.x}
+                        onChange={(event) => updateRoom(selectedRoom.id, { x: Number(event.target.value) })}
+                      />
+                      <TextField
+                        label="Y"
+                        type="number"
+                        value={selectedRoom.y}
+                        onChange={(event) => updateRoom(selectedRoom.id, { y: Number(event.target.value) })}
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        label="Width"
+                        type="number"
+                        value={selectedRoom.w}
+                        onChange={(event) => updateRoom(selectedRoom.id, { w: Number(event.target.value) })}
+                      />
+                      <TextField
+                        label="Height"
+                        type="number"
+                        value={selectedRoom.h}
+                        onChange={(event) => updateRoom(selectedRoom.id, { h: Number(event.target.value) })}
+                      />
+                    </Stack>
+                    <TextField
+                      label="Rotation"
+                      type="number"
+                      value={selectedRoom.rotation ?? 0}
+                      onChange={(event) => updateRoom(selectedRoom.id, { rotation: Number(event.target.value) })}
+                    />
+                    <Button variant="outlined" color="error" onClick={() => removeRoom(selectedRoom.id)}>
+                      Delete Room
+                    </Button>
+                  </Stack>
+                ) : null}
+
+                {selectedProp ? (
+                  <Stack spacing={1.5}>
+                    <Typography variant="subtitle2" color="text.secondary">Selected Prop</Typography>
+                    <TextField
+                      label="Label"
+                      value={selectedProp.label}
+                      onChange={(event) => updateProp(selectedProp.id, { label: event.target.value })}
+                    />
+                    <TextField
+                      label="Fill"
+                      value={selectedProp.fill ?? ""}
+                      onChange={(event) => updateProp(selectedProp.id, { fill: event.target.value })}
+                    />
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Prop Type</InputLabel>
+                      <Select
+                        label="Prop Type"
+                        value={selectedProp.propType}
+                        onChange={(event) =>
+                          updateProp(selectedProp.id, {
+                            propType: event.target.value as "generic" | "player-male" | "player-female" | "beacon",
+                          })
+                        }
+                      >
+                        <MenuItem value="generic">Generic</MenuItem>
+                        <MenuItem value="player-male">Player Male</MenuItem>
+                        <MenuItem value="player-female">Player Female</MenuItem>
+                        <MenuItem value="beacon">Beacon (Room ESP32)</MenuItem>
+                      </Select>
+                    </FormControl>
+
+                    {selectedProp.propType === "beacon" ? (
+                      <Stack spacing={1.5}>
+                        <TextField
+                          label="Beacon Device ID"
+                          value={selectedProp.beaconDeviceId ?? ""}
+                          onChange={(event) =>
+                            updateProp(selectedProp.id, { beaconDeviceId: event.target.value || undefined })
+                          }
+                          placeholder="beacon-room-a"
+                        />
+                        <TextField
+                          label="Covers Room ID"
+                          value={selectedProp.beaconRoomId ?? ""}
+                          onChange={(event) =>
+                            updateProp(selectedProp.id, { beaconRoomId: event.target.value || undefined })
+                          }
+                          placeholder="room-a"
+                        />
+                      </Stack>
+                    ) : null}
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        label="X"
+                        type="number"
+                        value={selectedProp.x}
+                        onChange={(event) => updateProp(selectedProp.id, { x: Number(event.target.value) })}
+                      />
+                      <TextField
+                        label="Y"
+                        type="number"
+                        value={selectedProp.y}
+                        onChange={(event) => updateProp(selectedProp.id, { y: Number(event.target.value) })}
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        label="Width"
+                        type="number"
+                        value={selectedProp.w}
+                        onChange={(event) => updateProp(selectedProp.id, { w: Number(event.target.value) })}
+                      />
+                      <TextField
+                        label="Height"
+                        type="number"
+                        value={selectedProp.h}
+                        onChange={(event) => updateProp(selectedProp.id, { h: Number(event.target.value) })}
+                      />
+                    </Stack>
+                    <TextField
+                      label="Rotation"
+                      type="number"
+                      value={selectedProp.rotation}
+                      onChange={(event) => updateProp(selectedProp.id, { rotation: Number(event.target.value) })}
+                    />
+                    <Button variant="outlined" color="error" onClick={() => removeProp(selectedProp.id)}>
+                      Delete Prop
+                    </Button>
+                  </Stack>
+                ) : null}
+
+                {selectedTarget?.type === "background" && background ? (
+                  <Stack spacing={1.5}>
+                    <Typography variant="subtitle2" color="text.secondary">SVG Background</Typography>
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        label="X"
+                        type="number"
+                        value={background.x}
+                        onChange={(event) => updateBackground({ x: Number(event.target.value) })}
+                      />
+                      <TextField
+                        label="Y"
+                        type="number"
+                        value={background.y}
+                        onChange={(event) => updateBackground({ y: Number(event.target.value) })}
+                      />
+                    </Stack>
+                    <Stack direction="row" spacing={1}>
+                      <TextField
+                        label="Width"
+                        type="number"
+                        value={background.w}
+                        onChange={(event) => updateBackground({ w: Number(event.target.value) })}
+                      />
+                      <TextField
+                        label="Height"
+                        type="number"
+                        value={background.h}
+                        onChange={(event) => updateBackground({ h: Number(event.target.value) })}
+                      />
+                    </Stack>
+                    <TextField
+                      label="Opacity"
+                      type="number"
+                      value={background.opacity}
+                      onChange={(event) => updateBackground({ opacity: Number(event.target.value) })}
+                    />
+                    <Button variant="outlined" color="error" onClick={() => setBackground(null)}>
+                      Remove SVG Background
+                    </Button>
+                  </Stack>
+                ) : null}
+
+                {!selectedRoom && !selectedProp && selectedTarget?.type !== "background" ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Select a room, prop, or background to edit properties.
+                  </Typography>
+                ) : null}
+              </Stack>
+            </Card>
+          </Grid>
+        </Grid>
       ) : null}
 
       {status ? (
-        <GlassCard variant="soft">
-          <p className="text-sm text-text-dim">{status}</p>
-        </GlassCard>
+        <Alert severity={status.includes("Failed") || status.includes("Could not") ? "error" : "info"}>{status}</Alert>
       ) : null}
-    </AppContainer>
+    </Container>
   );
 }

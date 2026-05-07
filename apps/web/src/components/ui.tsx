@@ -1,36 +1,39 @@
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
+import React, { type ReactNode } from "react";
+import type { ButtonProps, CardProps, ContainerProps, TextFieldProps } from "@mui/material";
+import { Container, Card, Button, TextField, Chip, Typography, CircularProgress } from "@mui/material";
 
-function joinClasses(...classes: Array<string | undefined | false>) {
-  return classes.filter(Boolean).join(" ");
-}
-
-export function AppContainer({ className, ...props }: ComponentPropsWithoutRef<"main">) {
-  return <main className={joinClasses("mx-auto w-full max-w-[92rem] px-4 py-6 md:px-7 md:py-8 lg:px-10", className)} {...props} />;
+export function AppContainer({ children, sx, ...props }: ContainerProps) {
+  return (
+    <Container
+      maxWidth="xl"
+      component={props.component ?? "main"}
+      sx={{ py: { xs: 3, md: 4 }, ...(sx ?? {}) }}
+      {...props}
+    >
+      {children}
+    </Container>
+  );
 }
 
 type CardVariant = "default" | "soft" | "elevated";
 
 export function GlassCard({
-  className,
   variant = "default",
+  children,
+  sx,
   ...props
-}: ComponentPropsWithoutRef<"section"> & { variant?: CardVariant }) {
-  const variantClass =
-    variant === "elevated"
-      ? "bg-panel/95 shadow-lifted"
-      : variant === "soft"
-        ? "bg-panel/68 shadow-glass"
-        : "bg-panel/85 shadow-card";
+}: CardProps & { variant?: CardVariant }) {
+  const elevation = variant === "elevated" ? 4 : variant === "soft" ? 1 : 2;
 
   return (
-    <section
-      className={joinClasses(
-        "rounded-2xl border border-outline/60 p-5 backdrop-blur-sm md:p-6",
-        variantClass,
-        className,
-      )}
+    <Card
+      component="section"
+      elevation={elevation}
+      sx={{ p: { xs: 2, md: 3 }, borderRadius: 4, mb: 2, ...(sx ?? {}) }}
       {...props}
-    />
+    >
+      {children}
+    </Card>
   );
 }
 
@@ -38,80 +41,59 @@ type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 type ButtonSize = "sm" | "md" | "lg";
 
 export function AppButton({
-  className,
   variant = "primary",
   size = "md",
   loading = false,
   children,
-  disabled,
   ...props
-}: ComponentPropsWithoutRef<"button"> & { variant?: ButtonVariant; size?: ButtonSize; loading?: boolean }) {
-  const variantClass =
-    variant === "primary"
-      ? "bg-accent text-accent-contrast hover:bg-accent/90"
-      : variant === "secondary"
-        ? "border border-outline bg-panel text-text hover:bg-panel-strong"
-        : variant === "danger"
-          ? "bg-error text-white hover:bg-error/90"
-          : "border border-transparent bg-transparent text-text hover:border-outline/60 hover:bg-panel-strong";
-
-  const sizeClass =
-    size === "sm"
-      ? "px-3 py-1.5 text-xs"
-      : size === "lg"
-        ? "px-5 py-3 text-base"
-        : "px-4 py-2 text-sm";
+}: ButtonProps & { variant?: ButtonVariant; size?: ButtonSize; loading?: boolean }) {
+  const muiVariant = variant === "primary" ? "contained" : variant === "secondary" ? "outlined" : "text";
+  const muiColor = variant === "danger" ? "error" : "primary";
+  const muiSize = size === "sm" ? "small" : size === "lg" ? "large" : "medium";
 
   return (
-    <button
-      className={joinClasses(
-        "inline-flex items-center justify-center gap-2 rounded-xl font-semibold transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 disabled:cursor-not-allowed disabled:opacity-60",
-        sizeClass,
-        variantClass,
-        className,
-      )}
-      disabled={disabled || loading}
-      aria-busy={loading}
-      {...props}
+    <Button
+      variant={muiVariant}
+      color={muiColor}
+      size={muiSize}
+      disabled={props.disabled || loading}
+      sx={{ textTransform: 'none', borderRadius: 3, fontWeight: 600 }}
+      startIcon={loading ? <CircularProgress size={16} color="inherit" /> : null}
+      {...(props as any)}
     >
-      {loading ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-r-transparent" /> : null}
-      <span>{children}</span>
-    </button>
+      {children}
+    </Button>
   );
 }
 
 export function AppInput({
-  className,
   invalid = false,
   ...props
-}: ComponentPropsWithoutRef<"input"> & { invalid?: boolean }) {
+}: TextFieldProps & { invalid?: boolean }) {
   return (
-    <input
-      className={joinClasses(
-        "w-full rounded-xl border bg-panel-strong px-3 py-2 text-sm text-text placeholder:text-text-dim transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
-        invalid ? "border-error/70 focus-visible:ring-error/45" : "border-outline",
-        className,
-      )}
-      aria-invalid={invalid || props["aria-invalid"]}
+    <TextField
       {...props}
+      error={invalid || props.error}
+      variant={props.variant ?? "outlined"}
+      size={props.size ?? "small"}
+      fullWidth={props.fullWidth ?? true}
     />
   );
 }
 
 export function AppTextArea({
-  className,
   invalid = false,
   ...props
-}: ComponentPropsWithoutRef<"textarea"> & { invalid?: boolean }) {
+}: TextFieldProps & { invalid?: boolean }) {
   return (
-    <textarea
-      className={joinClasses(
-        "w-full rounded-xl border bg-panel-strong px-3 py-2 text-sm text-text placeholder:text-text-dim transition duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60",
-        invalid ? "border-error/70 focus-visible:ring-error/45" : "border-outline",
-        className,
-      )}
-      aria-invalid={invalid || props["aria-invalid"]}
+    <TextField
       {...props}
+      error={invalid || props.error}
+      variant={props.variant ?? "outlined"}
+      size={props.size ?? "small"}
+      fullWidth={props.fullWidth ?? true}
+      multiline
+      minRows={props.minRows ?? 3}
     />
   );
 }
@@ -125,18 +107,17 @@ export function StatusPill({
   children: ReactNode;
   pulse?: boolean;
 }) {
-  const toneClass =
-    tone === "success"
-      ? "border-success/25 bg-success/15 text-success"
-      : tone === "warning"
-        ? "border-warning/30 bg-warning/20 text-warning"
-        : tone === "error"
-          ? "border-error/25 bg-error/15 text-error"
-          : "border-outline/80 bg-panel-strong text-text-dim";
+  const muiColor = tone === "neutral" ? "default" : tone === "success" ? "success" : tone === "warning" ? "warning" : "error";
 
-  const pulseClass = pulse && tone === "warning" ? "animate-pulse-soft" : "";
-
-  return <span className={joinClasses("inline-flex rounded-full border px-3 py-1 text-xs font-semibold", toneClass, pulseClass)}>{children}</span>;
+  return (
+    <Chip
+      size="small"
+      color={muiColor}
+      label={children}
+      variant={tone === "neutral" ? "outlined" : "filled"}
+      sx={{ fontWeight: 600, borderRadius: 999 }}
+    />
+  );
 }
 
 export function MetricCard({
@@ -150,20 +131,19 @@ export function MetricCard({
   hint?: string;
   tone?: "neutral" | "success" | "warning" | "error";
 }) {
-  const toneClass =
-    tone === "success"
-      ? "border-success/35 bg-success/8"
-      : tone === "warning"
-        ? "border-warning/35 bg-warning/8"
-        : tone === "error"
-          ? "border-error/35 bg-error/8"
-          : "border-outline/70 bg-panel/70";
-
   return (
-    <article className={joinClasses("rounded-2xl border p-4 shadow-card", toneClass)}>
-      <p className="font-data text-xs uppercase tracking-[0.18em] text-text-dim">{label}</p>
-      <p className="mt-2 text-3xl font-semibold leading-none text-text">{value}</p>
-      {hint ? <p className="mt-2 text-xs text-text-dim">{hint}</p> : null}
-    </article>
+    <Card elevation={2} sx={{ p: 2.5, borderRadius: 4, borderLeft: 4, borderColor: `${tone}.main` }}>
+      <Typography variant="overline" color="text.secondary" sx={{ fontWeight: 700, letterSpacing: 1.5 }}>
+        {label}
+      </Typography>
+      <Typography variant="h4" fontWeight={700} sx={{ mt: 1 }}>
+        {value}
+      </Typography>
+      {hint ? (
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+          {hint}
+        </Typography>
+      ) : null}
+    </Card>
   );
 }

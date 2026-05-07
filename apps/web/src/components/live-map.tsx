@@ -5,6 +5,7 @@ import type { KonvaEventObject } from "konva/lib/Node";
 import type { MapBackgroundConfig, MapPropElement } from "../lib/map-config";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, Image as KonvaImage, Layer, Rect, Stage, Text } from "react-konva";
+import { Box, Button, Chip, Paper, Stack, Typography } from "@mui/material";
 
 type LiveMapProps = {
   rooms: RoomZone[];
@@ -989,7 +990,7 @@ export function LiveMap({
   }, [isAutoFollowing, currentPlayerId, interactive, blipOverrides, locations, rooms, roomLookup, defaultBlipPositions, fitScale, stageWidth, stageHeight]);
 
   return (
-    <div ref={wrapperRef} className="rounded-2xl border border-outline/60 bg-panel/72 p-3 shadow-card backdrop-blur-sm">
+    <Paper ref={wrapperRef} elevation={0} sx={{ p: 2, borderRadius: 4, border: 1, borderColor: 'divider', overflow: 'hidden' }}>
       <Stage
         ref={stageRef}
         width={stageWidth}
@@ -1243,57 +1244,53 @@ export function LiveMap({
         </Layer>
       </Stage>
 
-      <div className="mt-3 flex flex-wrap gap-2 text-xs text-text-dim">
-        <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Rooms: {rooms.length}</span>
-        <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Props: {mapProps.length}</span>
-        <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Connected users: {connectedCount}</span>
-        <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Mapped users: {mappedLocations.length}</span>
-        <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Unmapped users: {unplacedCount}</span>
+      <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+        <Chip size="small" variant="outlined" label={`Rooms: ${rooms.length}`} />
+        <Chip size="small" variant="outlined" label={`Props: ${mapProps.length}`} />
+        <Chip size="small" variant="outlined" label={`Connected users: ${connectedCount}`} />
+        <Chip size="small" variant="outlined" label={`Mapped users: ${mappedLocations.length}`} />
+        <Chip size="small" variant="outlined" label={`Unmapped users: ${unplacedCount}`} />
         {interactive ? (
-          <span className="rounded-full border border-outline/70 bg-panel-strong px-3 py-1">Zoom: {Math.round(viewport.scale * 100)}%</span>
+          <Chip size="small" variant="outlined" label={`Zoom: ${Math.round(viewport.scale * 100)}%`} />
         ) : null}
-      </div>
+      </Stack>
 
       {interactive ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-text-dim">
-          <button
-            type="button"
-            className="rounded-lg border border-outline/70 bg-panel-strong px-2.5 py-1 font-medium text-text hover:bg-panel"
-            onClick={() => setClampedViewport({ x: 0, y: 0, scale: 1 })}
-          >
+        <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Button size="small" variant="outlined" onClick={() => setClampedViewport({ x: 0, y: 0, scale: 1 })}>
             Reset View
-          </button>
-          <button
-            type="button"
-            className="rounded-lg border border-outline/70 bg-panel-strong px-2.5 py-1 font-medium text-text hover:bg-panel"
-            onClick={() => setBlipOverrides({})}
-          >
+          </Button>
+          <Button size="small" variant="outlined" onClick={() => setBlipOverrides({})}>
             Reset Blips
-          </button>
-          <span>Drag map to pan, scroll to zoom, use WASD or arrow keys to move your marker, and drag your own marker for fine adjustment.</span>
-        </div>
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            Drag map to pan, scroll to zoom, use WASD or arrow keys to move your marker, and drag your own marker for fine adjustment.
+          </Typography>
+        </Stack>
       ) : (
-        <p className="mt-3 text-xs text-text-dim">Read-only map mode.</p>
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+          Read-only map mode.
+        </Typography>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-text-dim">
-        <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-success" />
-          Connected marker
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-slate-400" />
-          Disconnected marker
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-accent/85" />
-          Active room zone
-        </span>
-        <span className="inline-flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-panel-strong ring-1 ring-outline" />
-          Idle room zone
-        </span>
-      </div>
-    </div>
+      <Stack direction="row" spacing={2} sx={{ mt: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'success.main' }} />
+          <Typography variant="caption" color="text.secondary">Connected marker</Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'grey.500' }} />
+          <Typography variant="caption" color="text.secondary">Disconnected marker</Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'primary.main' }} />
+          <Typography variant="caption" color="text.secondary">Active room zone</Typography>
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'background.paper', border: 1, borderColor: 'divider' }} />
+          <Typography variant="caption" color="text.secondary">Idle room zone</Typography>
+        </Box>
+      </Stack>
+    </Paper>
   );
 }

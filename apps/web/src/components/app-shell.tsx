@@ -6,6 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "../store/auth-store";
 import { ToastFeed } from "./toast-feed";
 import { ThemeToggle } from "./theme-toggle";
+import { alpha } from "@mui/material/styles";
+import { AppBar, Toolbar, Typography, Button, Box, Container, Stack } from "@mui/material";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -46,68 +48,127 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-app text-text">
-      <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-        <div className="absolute -left-24 top-5 h-72 w-72 rounded-full bg-accent/15 blur-3xl" />
-        <div className="absolute right-0 top-1/3 h-64 w-64 rounded-full bg-success/12 blur-3xl" />
-        <div className="absolute left-1/3 top-2/3 h-80 w-80 rounded-full bg-warning/10 blur-3xl" />
-      </div>
-
-      <header className="sticky top-0 z-20 border-b border-outline/60 bg-app/86 shadow-sm backdrop-blur-xl">
-        <div className="mx-auto flex w-full max-w-[92rem] flex-wrap items-center justify-between gap-3 px-4 py-3 md:px-7 lg:px-10">
-          <Link href="/" className="text-lg font-semibold tracking-tight text-text">
-            IGNARA Control Grid
-          </Link>
-          <nav className="order-3 flex w-full flex-nowrap items-center gap-1 overflow-x-auto pb-1 text-sm md:order-none md:w-auto md:flex-wrap md:overflow-visible md:pb-0">
-            {links.map((link) => {
-              const active =
-                link.href === "/"
-                  ? pathname === "/"
-                  : pathname === link.href || pathname.startsWith(`${link.href}/`);
-
-              return (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className={`whitespace-nowrap rounded-lg border px-3 py-1.5 font-medium transition duration-200 ${
-                    active
-                      ? "border-outline bg-panel text-text shadow-sm"
-                      : "border-transparent text-text-dim hover:border-outline/60 hover:bg-panel/75 hover:text-text"
-                  }`}
+    <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', color: 'text.primary' }}>
+      <AppBar position="sticky" elevation={0} sx={{ bgcolor: 'transparent', boxShadow: 'none' }}>
+        <Box
+          sx={(theme) => ({
+            backdropFilter: 'blur(16px)',
+            backgroundColor: alpha(theme.palette.background.paper, 0.82),
+            borderBottom: 1,
+            borderColor: 'divider',
+            boxShadow: `0 16px 40px ${alpha(theme.palette.common.black, 0.08)}`,
+          })}
+        >
+          <Container maxWidth="xl">
+            <Toolbar disableGutters sx={{ gap: 2, flexWrap: 'wrap', py: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mr: 2 }}>
+                <Box
+                  sx={(theme) => ({
+                    width: 12,
+                    height: 12,
+                    borderRadius: '50%',
+                    backgroundImage: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                    boxShadow: `0 0 16px ${alpha(theme.palette.primary.main, 0.5)}`,
+                  })}
+                />
+                <Typography
+                  variant="h6"
+                  component={Link}
+                  href="/"
+                  sx={(theme) => ({
+                    fontWeight: 700,
+                    textDecoration: 'none',
+                    letterSpacing: 1.2,
+                    backgroundImage: `linear-gradient(120deg, ${theme.palette.primary.main}, ${theme.palette.secondary.main})`,
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                  })}
                 >
-                  {link.label}
-                </Link>
-              );
-            })}
-          </nav>
-          <div className="flex shrink-0 items-center gap-2">
-            {user ? (
-              <>
-                <p className="max-w-[19rem] truncate text-sm font-medium text-text">{user.email}</p>
-                <button
-                  type="button"
-                  disabled={isLoggingOut}
-                  onClick={() => void handleLogout()}
-                  className="inline-flex items-center rounded-full border border-outline bg-panel px-3 py-1.5 text-xs font-semibold text-text transition hover:bg-panel-strong disabled:cursor-not-allowed disabled:opacity-70"
-                >
-                  {isLoggingOut ? "Logging out..." : "Logout"}
-                </button>
-              </>
-            ) : (
-              <Link
-                href="/login"
-                className="inline-flex items-center rounded-full border border-outline bg-panel px-3 py-1.5 text-xs font-semibold text-text transition hover:bg-panel-strong"
-              >
-                {isHydrating ? "Checking session..." : "Sign In"}
-              </Link>
-            )}
-            <ThemeToggle />
-          </div>
-        </div>
-      </header>
+                  IGNARA Control Grid
+                </Typography>
+              </Box>
 
-      {children}
+              <Stack direction="row" spacing={1} sx={{ flexGrow: 1, flexWrap: 'wrap', gap: 1 }}>
+                {links.map((link) => {
+                  const active =
+                    link.href === "/"
+                      ? pathname === "/"
+                      : pathname === link.href || pathname.startsWith(`${link.href}/`);
+
+                  return (
+                    <Button
+                      key={link.href}
+                      component={Link}
+                      href={link.href}
+                      variant={active ? "contained" : "text"}
+                      disableElevation
+                      sx={(theme) => ({
+                        borderRadius: 999,
+                        px: 2,
+                        color: active ? theme.palette.primary.contrastText : theme.palette.text.secondary,
+                        backgroundColor: active ? undefined : 'transparent',
+                        '&:hover': {
+                          backgroundColor: active
+                            ? undefined
+                            : alpha(theme.palette.primary.main, 0.08),
+                        },
+                      })}
+                    >
+                      {link.label}
+                    </Button>
+                  );
+                })}
+              </Stack>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                {user ? (
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <Box
+                      sx={(theme) => ({
+                        px: 1.5,
+                        py: 0.5,
+                        borderRadius: 999,
+                        bgcolor: alpha(theme.palette.primary.main, 0.12),
+                        border: `1px solid ${alpha(theme.palette.primary.main, 0.24)}`,
+                      })}
+                    >
+                      <Typography
+                        variant="caption"
+                        sx={{ maxWidth: 180, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                      >
+                        {user.email}
+                      </Typography>
+                    </Box>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      disabled={isLoggingOut}
+                      onClick={() => void handleLogout()}
+                    >
+                      {isLoggingOut ? "Logging out..." : "Logout"}
+                    </Button>
+                  </Stack>
+                ) : (
+                  <Button
+                    component={Link}
+                    href="/login"
+                    variant="outlined"
+                    size="small"
+                  >
+                    {isHydrating ? "Checking session..." : "Sign In"}
+                  </Button>
+                )}
+                <ThemeToggle />
+              </Box>
+            </Toolbar>
+          </Container>
+        </Box>
+      </AppBar>
+
+      <Box component="main" sx={{ flexGrow: 1, pb: { xs: 4, md: 6 } }}>
+        {children}
+      </Box>
       <ToastFeed />
-    </div>
+    </Box>
   );
 }

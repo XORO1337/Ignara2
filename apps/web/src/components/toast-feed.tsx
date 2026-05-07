@@ -2,19 +2,7 @@
 
 import { useMemo } from "react";
 import { useToastStore } from "../store/toast-store";
-
-function toneClasses(tone: "neutral" | "success" | "warning" | "error") {
-  if (tone === "success") {
-    return "border-success/35 bg-success/15 text-success";
-  }
-  if (tone === "warning") {
-    return "border-warning/35 bg-warning/15 text-warning";
-  }
-  if (tone === "error") {
-    return "border-error/35 bg-error/15 text-error";
-  }
-  return "border-outline/75 bg-panel/95 text-text";
-}
+import { Snackbar, Alert, Box } from "@mui/material";
 
 export function ToastFeed() {
   const toasts = useToastStore((state) => state.toasts);
@@ -30,18 +18,26 @@ export function ToastFeed() {
   }
 
   return (
-    <aside className="pointer-events-none fixed bottom-4 right-4 z-50 flex w-[min(24rem,calc(100vw-1.5rem))] flex-col gap-2">
+    <Box sx={{ position: 'fixed', bottom: 24, right: 24, zIndex: 1400, display: 'flex', flexDirection: 'column', gap: 1 }}>
       {orderedToasts.map((toast) => (
-        <button
+        <Snackbar
           key={toast.id}
-          type="button"
-          onClick={() => removeToast(toast.id)}
-          className={`pointer-events-auto rounded-xl border px-3 py-2 text-left text-sm shadow-glass backdrop-blur-sm transition hover:translate-x-0.5 ${toneClasses(toast.tone)}`}
-          aria-label="Dismiss notification"
+          open={true}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+          autoHideDuration={5000}
+          onClose={() => removeToast(toast.id)}
+          sx={{ position: 'relative', mb: 1, transform: 'none !important', left: 'auto', right: 'auto', bottom: 'auto' }}
         >
-          {toast.message}
-        </button>
+          <Alert
+            onClose={() => removeToast(toast.id)}
+            severity={toast.tone === 'neutral' ? 'info' : toast.tone}
+            variant="filled"
+            sx={{ width: '100%', minWidth: 250, boxShadow: 3 }}
+          >
+            {toast.message}
+          </Alert>
+        </Snackbar>
       ))}
-    </aside>
+    </Box>
   );
 }

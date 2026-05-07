@@ -1,18 +1,16 @@
 "use client";
 
 import { useTheme } from "./theme-provider";
+import { IconButton } from "@mui/material";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
 
 export function ThemeToggle() {
-  const { mode, cycleMode } = useTheme();
+  const { resolvedTheme, cycleMode } = useTheme();
 
   return (
-    <button
-      type="button"
-      onClick={cycleMode}
-      className="inline-flex items-center rounded-full border border-outline bg-panel px-3 py-1.5 text-xs font-semibold text-text transition hover:bg-panel-strong"
-      title="Toggle theme mode"
-    >
-      {mode === "dark" ? "Dark" : "Light"}
-    </button>
+    <IconButton onClick={cycleMode} aria-label="Toggle theme">
+      {resolvedTheme === "dark" ? <LightModeIcon /> : <DarkModeIcon />}
+    </IconButton>
   );
 }

@@ -12,7 +12,8 @@ import { useAuthStore, type SessionUser } from "../../store/auth-store";
 import { useLocationStore } from "../../store/location-store";
 import { useToastStore } from "../../store/toast-store";
 import { EmployeeCollabDock } from "../../components/employee-collab-dock";
-import { AppButton, AppContainer, GlassCard, StatusPill } from "../../components/ui";
+import { alpha } from "@mui/material/styles";
+import { Container, Card, Typography, Box, Stack, Button, Slider, Paper, Alert, Chip, Grid } from "@mui/material";
 
 const LiveMap = dynamic(
   () => import("../../components/live-map").then((module) => module.LiveMap),
@@ -378,16 +379,16 @@ export default function EmployeeDashboardPage() {
 
   if (user && user.role !== "employee") {
     return (
-      <AppContainer>
-        <GlassCard>
-          <p className="text-sm text-text-dim">Redirecting to the manager dashboard...</p>
-        </GlassCard>
-      </AppContainer>
+      <Container maxWidth={false}>
+        <Card sx={{ p: 4 }}>
+          <Typography variant="body2" color="text.secondary">Redirecting to the manager dashboard...</Typography>
+        </Card>
+      </Container>
     );
   }
 
   return (
-    <AppContainer className="max-w-none px-3 py-3 md:px-4 md:py-4 lg:px-5">
+    <Container maxWidth={false} sx={{ px: { xs: 2, md: 3 }, py: { xs: 2, md: 3 } }}>
       {user ? (
         <EmployeeCollabDock
           orgId={user.orgId}
@@ -397,128 +398,194 @@ export default function EmployeeDashboardPage() {
         />
       ) : null}
 
-      <section className="grid min-h-[calc(100vh-6.5rem)] gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
-        <GlassCard className="space-y-3" variant="soft">
-          {isBootstrapping ? <p className="text-sm text-text-dim">Loading map and employee presence...</p> : null}
-          {bootstrapError ? <p className="rounded-xl border border-error/35 bg-error/10 px-3 py-2 text-sm text-error">{bootstrapError}</p> : null}
-          {!isBootstrapping && !bootstrapError && mapRooms.length === 0 ? (
-            <p className="rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-warning">
-              No saved room zones found. Ask an admin to configure room zones in Map Editor.
-            </p>
-          ) : null}
-
-          <LiveMap
-            rooms={mapRooms}
-            locations={visibleLocations}
-            mapProps={mapProps}
-            background={mapBackground}
-            interactive
-            mapStorageKey={activeMapId && user ? `${user.orgId}:${activeMapId}:employee:${user.email}` : null}
-            currentPlayerId={user?.email ?? null}
-            genderByEmployee={userGenderMap}
-            onMovePlayer={user ? moveCurrentPlayer : undefined}
-            disconnectPings={disconnectPings}
-            autoFollowPlayer
-          />
-        </GlassCard>
-
-        <GlassCard className="space-y-4" variant="soft">
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusPill tone={socketState === "connected" ? "success" : socketState === "connecting" ? "warning" : "error"} pulse>
-              Socket: {socketState}
-            </StatusPill>
-            <StatusPill tone={connectedLocations.length > 0 ? "success" : "warning"}>
-              Employees Online: {connectedLocations.length}
-            </StatusPill>
-            <StatusPill tone={currentUserRoomId ? "success" : "warning"}>
-              You: {currentUserRoomId ? `connected (${currentUserRoomId})` : "disconnected"}
-            </StatusPill>
-          </div>
-
-          <div>
-            <p className="font-data text-xs uppercase tracking-[0.18em] text-text-dim">Quick Join</p>
-            <h2 className="mt-1 text-xl font-semibold">Room Jump Slider</h2>
-            <p className="mt-1 text-sm text-text-dim">Active map: {activeMapName ?? "No map saved yet"}</p>
-            <p className="mt-1 text-sm text-text-dim">Use the slider to jump directly to a room for faster meeting joins.</p>
-          </div>
-
-          {orderedRooms.length > 0 ? (
-            <>
-              <label className="block text-xs font-medium uppercase tracking-[0.14em] text-text-dim" htmlFor="room-jump-slider">
-                Room Selector
-              </label>
-              <input
-                id="room-jump-slider"
-                type="range"
-                min={0}
-                max={Math.max(0, orderedRooms.length - 1)}
-                value={selectedRoomIndex}
-                onChange={(event) => setSelectedRoomIndex(Number(event.target.value))}
-                className="w-full accent-accent"
-                disabled={orderedRooms.length <= 1}
+      <Stack spacing={2} sx={{ minHeight: 'calc(100vh - 6.5rem)' }}>
+        <Card
+          elevation={0}
+          sx={(theme) => ({
+            p: { xs: 2.5, md: 3 },
+            backgroundImage: `linear-gradient(140deg, ${alpha(theme.palette.primary.main, 0.18)}, transparent 55%),
+              linear-gradient(220deg, ${alpha(theme.palette.secondary.main, 0.16)}, transparent 60%)`,
+          })}
+        >
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+            <Box>
+              <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.6, fontWeight: 700 }}>
+                Employee Dashboard
+              </Typography>
+              <Typography variant="h4" sx={{ mt: 1 }}>Live Office Map</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Active map: {activeMapName ?? "No map saved yet"}
+              </Typography>
+            </Box>
+            <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+              <Chip
+                color={socketState === "connected" ? "success" : socketState === "connecting" ? "warning" : "error"}
+                label={`Socket: ${socketState}`}
+                size="small"
               />
+              <Chip
+                color={currentUserRoomId ? "success" : "warning"}
+                label={currentUserRoomId ? `Room: ${currentUserRoomId}` : "Room: disconnected"}
+                size="small"
+              />
+            </Stack>
+          </Box>
+        </Card>
 
-              <div className="rounded-xl border border-outline/70 bg-panel-strong/55 p-3">
-                <p className="font-data text-xs uppercase tracking-[0.12em] text-text-dim">Selected Room</p>
-                <p className="mt-1 text-lg font-semibold">{selectedRoom?.label ?? "No room selected"}</p>
-                {selectedRoom ? <p className="mt-1 text-xs text-text-dim">Room ID: {selectedRoom.id}</p> : null}
-              </div>
+        <Grid container spacing={2} sx={{ flexGrow: 1 }}>
+        <Grid item xs={12} xl={8} sx={{ flexGrow: 1 }}>
+          <Card elevation={0} sx={{ p: 2, height: '100%', display: 'flex', flexDirection: 'column', gap: 2, border: 1, borderColor: 'divider' }}>
+            {isBootstrapping ? <Typography variant="body2" color="text.secondary">Loading map and employee presence...</Typography> : null}
+            {bootstrapError ? <Alert severity="error">{bootstrapError}</Alert> : null}
+            {!isBootstrapping && !bootstrapError && mapRooms.length === 0 ? (
+              <Alert severity="warning">
+                No saved room zones found. Ask an admin to configure room zones in Map Editor.
+              </Alert>
+            ) : null}
 
-              <AppButton
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  if (!selectedRoom) {
-                    return;
-                  }
-                  void jumpToRoom(selectedRoom);
-                }}
-                disabled={!selectedRoom || !user}
-              >
-                Jump To Selected Room
-              </AppButton>
+            <Box sx={{ flexGrow: 1, position: 'relative' }}>
+              <LiveMap
+                rooms={mapRooms}
+                locations={visibleLocations}
+                mapProps={mapProps}
+                background={mapBackground}
+                interactive
+                mapStorageKey={activeMapId && user ? `${user.orgId}:${activeMapId}:employee:${user.email}` : null}
+                currentPlayerId={user?.email ?? null}
+                genderByEmployee={userGenderMap}
+                onMovePlayer={user ? moveCurrentPlayer : undefined}
+                disconnectPings={disconnectPings}
+                autoFollowPlayer
+              />
+            </Box>
+          </Card>
+        </Grid>
 
-              <AppButton
-                type="button"
-                variant="ghost"
-                onClick={() => void disconnectSelf()}
-                disabled={!currentUserRoomId || isDisconnecting}
-                loading={isDisconnecting}
-              >
-                Disconnect Me
-              </AppButton>
+        <Grid item xs={12} xl={4} sx={{ width: { xl: 340 } }}>
+          <Card elevation={0} sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, border: 1, borderColor: 'divider' }}>
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+              <Chip
+                color={socketState === "connected" ? "success" : socketState === "connecting" ? "warning" : "error"}
+                label={`Socket: ${socketState}`}
+                size="small"
+              />
+              <Chip
+                color={connectedLocations.length > 0 ? "success" : "warning"}
+                label={`Employees Online: ${connectedLocations.length}`}
+                size="small"
+              />
+              <Chip
+                color={currentUserRoomId ? "success" : "warning"}
+                label={`You: ${currentUserRoomId ? `connected (${currentUserRoomId})` : "disconnected"}`}
+                size="small"
+              />
+            </Box>
 
-              <div className="max-h-[42vh] space-y-2 overflow-auto pr-1">
-                {orderedRooms.map((room, index) => {
-                  const active = selectedRoom?.id === room.id;
+            <Box>
+              <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>
+                Quick Join
+              </Typography>
+              <Typography variant="h6" fontWeight="bold" sx={{ mt: 1 }}>
+                Room Jump Slider
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Active map: {activeMapName ?? "No map saved yet"}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Use the slider to jump directly to a room for faster meeting joins.
+              </Typography>
+            </Box>
 
-                  return (
-                    <button
-                      key={room.id}
-                      type="button"
-                      onClick={() => setSelectedRoomIndex(index)}
-                      className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
-                        active
-                          ? "border-accent/70 bg-accent/10 text-text"
-                          : "border-outline/70 bg-panel-strong/45 text-text-dim hover:bg-panel-strong"
-                      }`}
-                    >
-                      <p className="font-semibold">{room.label}</p>
-                      <p className="mt-1 text-xs opacity-80">{room.id}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </>
-          ) : (
-            <p className="rounded-xl border border-outline/70 bg-panel-strong/45 p-3 text-sm text-text-dim">
-              No rooms available yet. Ask an admin to save room zones in Map Editor.
-            </p>
-          )}
+            {orderedRooms.length > 0 ? (
+              <>
+                <Box>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold', display: 'block' }}>
+                    Room Selector
+                  </Typography>
+                  <Slider
+                    min={0}
+                    max={Math.max(0, orderedRooms.length - 1)}
+                    value={selectedRoomIndex}
+                    onChange={(_, value) => setSelectedRoomIndex(Number(value))}
+                    disabled={orderedRooms.length <= 1}
+                    color="primary"
+                  />
+                </Box>
 
-          {jumpStatus ? <p className="text-xs text-text-dim">{jumpStatus}</p> : null}
-        </GlassCard>
-      </section>
-    </AppContainer>
+                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.default' }}>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold', display: 'block' }}>
+                    Selected Room
+                  </Typography>
+                  <Typography variant="h6" fontWeight="bold" sx={{ mt: 1 }}>
+                    {selectedRoom?.label ?? "No room selected"}
+                  </Typography>
+                  {selectedRoom ? <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>Room ID: {selectedRoom.id}</Typography> : null}
+                </Paper>
+
+                <Stack spacing={1}>
+                  <Button
+                    variant="contained"
+                    color="primary"
+                    onClick={() => {
+                      if (!selectedRoom) return;
+                      void jumpToRoom(selectedRoom);
+                    }}
+                    disabled={!selectedRoom || !user}
+                  >
+                    Jump To Selected Room
+                  </Button>
+
+                  <Button
+                    variant="outlined"
+                    color="secondary"
+                    onClick={() => void disconnectSelf()}
+                    disabled={!currentUserRoomId || isDisconnecting}
+                  >
+                    {isDisconnecting ? "Disconnecting..." : "Disconnect Me"}
+                  </Button>
+                </Stack>
+
+                <Box sx={{ maxHeight: '42vh', overflow: 'auto', pr: 1, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  {orderedRooms.map((room, index) => {
+                    const active = selectedRoom?.id === room.id;
+
+                    return (
+                      <Paper
+                        key={room.id}
+                        variant="outlined"
+                        sx={{
+                          p: 1.5,
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                          bgcolor: active ? 'primary.main' : 'background.paper',
+                          color: active ? 'primary.contrastText' : 'text.primary',
+                          borderColor: active ? 'primary.main' : 'divider',
+                          '&:hover': { bgcolor: active ? 'primary.dark' : 'action.hover' }
+                        }}
+                        onClick={() => setSelectedRoomIndex(index)}
+                      >
+                        <Typography variant="body2" fontWeight="bold">
+                          {room.label}
+                        </Typography>
+                        <Typography variant="caption" sx={{ opacity: 0.8, display: 'block' }}>
+                          {room.id}
+                        </Typography>
+                      </Paper>
+                    );
+                  })}
+                </Box>
+              </>
+            ) : (
+              <Alert severity="info" variant="outlined">
+                No rooms available yet. Ask an admin to save room zones in Map Editor.
+              </Alert>
+            )}
+
+            {jumpStatus ? <Typography variant="caption" color="text.secondary">{jumpStatus}</Typography> : null}
+          </Card>
+        </Grid>
+        </Grid>
+      </Stack>
+    </Container>
   );
 }

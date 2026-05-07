@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { AppButton, AppContainer, AppInput, AppTextArea, GlassCard, StatusPill } from "../../components/ui";
+import { alpha } from "@mui/material/styles";
+import { Container, Card, Typography, TextField, Button, Box, Stack, Alert, Chip, Divider } from "@mui/material";
 import { apiRequest } from "../../lib/api";
 
 export default function NotificationsPage() {
@@ -53,44 +54,86 @@ export default function NotificationsPage() {
   }
 
   return (
-    <AppContainer className="space-y-4">
-      <GlassCard variant="elevated">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="font-data text-xs uppercase tracking-[0.24em] text-text-dim">Manager Comms</p>
-            <h1 className="mt-1 text-3xl font-semibold">Notifications</h1>
-            <p className="mt-1 text-sm text-text-dim">Send targeted updates or high-priority broadcasts across your workplace.</p>
-          </div>
-          <StatusPill tone="neutral">API backed</StatusPill>
-        </div>
-      </GlassCard>
+    <Container maxWidth="md" sx={{ py: { xs: 3, md: 5 }, display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Card
+        sx={(theme) => ({
+          p: { xs: 3, md: 4 },
+          backgroundImage: `linear-gradient(140deg, ${alpha(theme.palette.primary.main, 0.2)}, transparent 55%),
+            linear-gradient(220deg, ${alpha(theme.palette.secondary.main, 0.16)}, transparent 60%)`,
+        })}
+      >
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+          <Box>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.8, fontWeight: 700 }}>
+              Manager Comms
+            </Typography>
+            <Typography variant="h3" sx={{ mt: 1, mb: 1 }}>
+              Notifications
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Send targeted updates or high-priority broadcasts across your workplace.
+            </Typography>
+          </Box>
+          <Chip label="API backed" variant="outlined" />
+        </Box>
+      </Card>
 
-      <GlassCard variant="soft">
+      <Card sx={{ p: { xs: 3, md: 4 } }} elevation={0}>
         <form onSubmit={sendTargeted}>
-          <p className="font-data text-xs uppercase tracking-[0.2em] text-text-dim">Compose Message</p>
-          <label className="mt-2 block text-sm text-text-dim">Message</label>
-          <AppTextArea className="mt-1 h-24" value={message} onChange={(event) => setMessage(event.target.value)} />
-          <p className="mt-1 text-xs text-text-dim">{message.trim().length} characters</p>
+          <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.6, fontWeight: 700 }}>
+            Compose Message
+          </Typography>
 
-          <label className="mt-4 block text-sm text-text-dim">Recipient IDs (comma-separated)</label>
-          <AppInput className="mt-1" value={recipientIds} onChange={(event) => setRecipientIds(event.target.value)} />
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            label="Message"
+            variant="outlined"
+            margin="normal"
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            helperText={`${message.trim().length} characters`}
+          />
 
-          <div className="mt-4 flex flex-wrap gap-3">
-            <AppButton type="submit" loading={isSendingTargeted} disabled={isSendingTargeted}>
-              Send Targeted
-            </AppButton>
-            <AppButton type="button" variant="secondary" loading={isSendingBroadcast} disabled={isSendingBroadcast} onClick={() => void sendBroadcast()}>
-              Send Broadcast
-            </AppButton>
-          </div>
+          <TextField
+            fullWidth
+            label="Recipient IDs (comma-separated)"
+            variant="outlined"
+            margin="normal"
+            value={recipientIds}
+            onChange={(event) => setRecipientIds(event.target.value)}
+          />
+
+          <Divider sx={{ my: 3 }} />
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+            <Button
+              type="submit"
+              variant="contained"
+              color="primary"
+              disabled={isSendingTargeted || isSendingBroadcast}
+            >
+              {isSendingTargeted ? "Sending..." : "Send Targeted"}
+            </Button>
+            <Button
+              type="button"
+              variant="outlined"
+              color="secondary"
+              disabled={isSendingTargeted || isSendingBroadcast}
+              onClick={() => void sendBroadcast()}
+            >
+              {isSendingBroadcast ? "Sending..." : "Send Broadcast"}
+            </Button>
+          </Stack>
         </form>
-      </GlassCard>
+      </Card>
 
       {status ? (
-        <GlassCard variant="soft">
-          <p className="text-sm text-text-dim">{status}</p>
-        </GlassCard>
+        <Alert severity={status.includes("Could not") ? "error" : "success"} sx={{ mt: 1 }}>
+          {status}
+        </Alert>
       ) : null}
-    </AppContainer>
+    </Container>
   );
 }

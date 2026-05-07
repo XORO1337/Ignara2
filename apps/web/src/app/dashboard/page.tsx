@@ -11,7 +11,8 @@ import { createLocationSocket } from "../../lib/socket";
 import { useAuthStore, type SessionUser } from "../../store/auth-store";
 import { useLocationStore } from "../../store/location-store";
 import { useToastStore } from "../../store/toast-store";
-import { AppButton, AppContainer, AppInput, GlassCard, MetricCard, StatusPill } from "../../components/ui";
+import { alpha } from "@mui/material/styles";
+import { Container, Card, Typography, Box, Stack, Button, TextField, Chip, Grid, Paper, Alert } from "@mui/material";
 
 const LiveMap = dynamic(
   () => import("../../components/live-map").then((module) => module.LiveMap),
@@ -411,198 +412,230 @@ export default function DashboardPage() {
 
   if (user && user.role === "employee") {
     return (
-      <AppContainer>
-        <GlassCard>
-          <p className="text-sm text-text-dim">Redirecting to the employee dashboard...</p>
-        </GlassCard>
-      </AppContainer>
+      <Container maxWidth="xl" sx={{ py: 4 }}>
+        <Card sx={{ p: 4, borderRadius: 3, mb: 2 }}>
+          <Typography variant="body2" color="text.secondary">Redirecting to the employee dashboard...</Typography>
+        </Card>
+      </Container>
     );
   }
 
   return (
-    <AppContainer className="space-y-5">
-      <GlassCard variant="elevated">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="font-data text-xs uppercase tracking-[0.24em] text-text-dim">Manager Dashboard</p>
-            <h1 className="mt-1 text-3xl font-semibold text-balance">Live Workplace Operations</h1>
-            <p className="mt-1 text-sm text-text-dim">Active map: {activeMapName ?? "No map saved yet"}</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <StatusPill tone={socketState === "connected" ? "success" : socketState === "connecting" ? "warning" : "error"} pulse>
-              Socket: {socketState}
-            </StatusPill>
-            <StatusPill tone={mapRooms.length > 0 ? "success" : "warning"}>Rooms: {mapRooms.length}</StatusPill>
-          </div>
-        </div>
-      </GlassCard>
+    <Container maxWidth="xl" sx={{ py: { xs: 3, md: 4 } }}>
+      <Stack spacing={4}>
+        <Card
+          elevation={0}
+          sx={(theme) => ({
+            p: { xs: 2.5, md: 3.5 },
+            borderRadius: 4,
+            mb: 2,
+            backgroundImage: `linear-gradient(140deg, ${alpha(theme.palette.primary.main, 0.18)}, transparent 55%),
+              linear-gradient(220deg, ${alpha(theme.palette.secondary.main, 0.14)}, transparent 60%)`,
+          })}
+        >
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 3 }}>
+          <Box>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>Manager Dashboard</Typography>
+            <Typography variant="h4" fontWeight="bold" sx={{ mt: 1 }}>Live Workplace Operations</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Active map: {activeMapName ?? "No map saved yet"}</Typography>
+          </Box>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 1 }}>
+            <Chip color={socketState === "connected" ? "success" : socketState === "connecting" ? "warning" : "error"} label={`Socket: ${socketState}`} />
+            <Chip color={mapRooms.length > 0 ? "success" : "warning"} label={`Rooms: ${mapRooms.length}`} />
+          </Box>
+          </Box>
+        </Card>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Connected Staff" value={connectedLocations.length} hint={`${disconnectedLocations.length} disconnected`} tone="success" />
-        <MetricCard label="Rooms In Use" value={activeRoomCount} hint={`${mapRooms.length} total rooms`} tone={mapRooms.length ? "neutral" : "warning"} />
-        <MetricCard label="Mapped Props" value={mapProps.length} hint={mapBackground ? "Background active" : "No background"} />
-        <MetricCard
-          label="Unmapped Users"
-          value={unmappedConnectedCount}
-          hint={unmappedConnectedCount ? "Assign room mapping in editor" : "All users mapped"}
-          tone={unmappedConnectedCount ? "warning" : "success"}
-        />
-      </section>
+      <Grid container spacing={3}>
+        <Grid item xs={12} sm={6} xl={3}>
+          <Paper sx={{ p: 3, borderLeft: 4, borderColor: 'success.main', height: '100%' }} elevation={1}>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>Connected Staff</Typography>
+            <Typography variant="h4" fontWeight="bold" sx={{ mt: 1 }}>{connectedLocations.length}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>{`${disconnectedLocations.length} disconnected`}</Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={6} xl={3}>
+          <Paper sx={{ p: 3, borderLeft: 4, borderColor: mapRooms.length ? 'text.secondary' : 'warning.main', height: '100%' }} elevation={1}>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>Rooms In Use</Typography>
+            <Typography variant="h4" fontWeight="bold" sx={{ mt: 1 }}>{activeRoomCount}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>{`${mapRooms.length} total rooms`}</Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={6} xl={3}>
+          <Paper sx={{ p: 3, borderLeft: 4, borderColor: 'text.secondary', height: '100%' }} elevation={1}>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>Mapped Props</Typography>
+            <Typography variant="h4" fontWeight="bold" sx={{ mt: 1 }}>{mapProps.length}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>{mapBackground ? "Background active" : "No background"}</Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={6} xl={3}>
+          <Paper sx={{ p: 3, borderLeft: 4, borderColor: unmappedConnectedCount ? 'warning.main' : 'success.main', height: '100%' }} elevation={1}>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>Unmapped Users</Typography>
+            <Typography variant="h4" fontWeight="bold" sx={{ mt: 1 }}>{unmappedConnectedCount}</Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>{unmappedConnectedCount ? "Assign room mapping in editor" : "All users mapped"}</Typography>
+          </Paper>
+        </Grid>
+      </Grid>
 
-      <section className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(360px,430px)]">
-        <div className="space-y-3">
-          <GlassCard className="space-y-3" variant="soft">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-data text-xs uppercase tracking-[0.18em] text-text-dim">Occupancy View</p>
-                <h2 className="mt-1 text-xl font-semibold">Live Office Map</h2>
-              </div>
-              <StatusPill tone={connectedLocations.length > 0 ? "success" : "neutral"}>{connectedLocations.length} online</StatusPill>
-            </div>
+      <Box sx={{ display: 'grid', gap: 3, gridTemplateColumns: { xl: 'minmax(0, 1fr) minmax(360px, 430px)', xs: '1fr' } }}>
+        <Stack spacing={3}>
+          <Card elevation={0} sx={{ p: 3, border: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 2 }}>
+              <Box>
+                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>Occupancy View</Typography>
+                <Typography variant="h6" fontWeight="bold" sx={{ mt: 0.5 }}>Live Office Map</Typography>
+              </Box>
+              <Chip size="small" color={connectedLocations.length > 0 ? "success" : "default"} label={`${connectedLocations.length} online`} />
+            </Box>
 
-            {isBootstrapping ? <p className="text-sm text-text-dim">Loading locations, tags, and map configuration...</p> : null}
-            {bootstrapError ? <p className="rounded-xl border border-error/35 bg-error/10 px-3 py-2 text-sm text-error">{bootstrapError}</p> : null}
+            {isBootstrapping ? <Typography variant="body2" color="text.secondary">Loading locations, tags, and map configuration...</Typography> : null}
+            {bootstrapError ? <Alert severity="error">{bootstrapError}</Alert> : null}
             {!isBootstrapping && !bootstrapError && mapRooms.length === 0 ? (
-              <p className="rounded-xl border border-warning/35 bg-warning/10 px-3 py-2 text-sm text-warning">
+              <Alert severity="warning">
                 No saved room zones found. Create zones in Map Editor to enable room-based live placement.
-              </p>
+              </Alert>
             ) : null}
-            <LiveMap
-              rooms={mapRooms}
-              locations={locations}
-              mapProps={mapProps}
-              background={mapBackground}
-              interactive={Boolean(canManageLiveMap)}
-              mapStorageKey={activeMapId && user ? `${user.orgId}:${activeMapId}` : null}
-              currentPlayerId={canManageLiveMap && user ? user.email : null}
-              genderByEmployee={userGenderMap}
-              onMovePlayer={canManageLiveMap && user ? moveCurrentPlayer : undefined}
-              disconnectPings={disconnectPings}
-            />
-          </GlassCard>
+            <Box sx={{ minHeight: 400, position: 'relative' }}>
+              <LiveMap
+                rooms={mapRooms}
+                locations={locations}
+                mapProps={mapProps}
+                background={mapBackground}
+                interactive={Boolean(canManageLiveMap)}
+                mapStorageKey={activeMapId && user ? `${user.orgId}:${activeMapId}` : null}
+                currentPlayerId={canManageLiveMap && user ? user.email : null}
+                genderByEmployee={userGenderMap}
+                onMovePlayer={canManageLiveMap && user ? moveCurrentPlayer : undefined}
+                disconnectPings={disconnectPings}
+              />
+            </Box>
+          </Card>
 
           {canManageTags ? (
-            <GlassCard className="space-y-3" variant="soft">
-              <p className="font-data text-xs uppercase tracking-[0.2em] text-text-dim">Connected Employees</p>
+            <Card elevation={0} sx={{ p: 3, border: 1, borderColor: 'divider' }}>
+              <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>Connected Employees</Typography>
               {connectedLocations.length > 0 ? (
-                <div className="space-y-2">
+                <Stack spacing={2} sx={{ mt: 2 }}>
                   {connectedLocations.map((location) => (
-                    <div key={location.employeeId} className="rounded-xl border border-outline/60 bg-panel-strong/50 p-3 text-sm">
-                      <p className="font-semibold">{location.employeeId}</p>
-                      <p className="mt-1 text-xs text-text-dim">Room: {formatRoomLabel(location.roomId)}</p>
-                      <p className="mt-1 text-xs text-text-dim">Updated: {new Date(location.ts).toLocaleString()}</p>
-                      <AppButton
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="mt-2"
+                    <Paper key={location.employeeId} variant="outlined" sx={{ p: 2 }}>
+                      <Typography variant="subtitle2" fontWeight="bold">{location.employeeId}</Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>Room: {formatRoomLabel(location.roomId)}</Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>Updated: {new Date(location.ts).toLocaleString()}</Typography>
+                      <Button
+                        variant="outlined"
+                        size="small"
+                        color="secondary"
+                        sx={{ mt: 1 }}
                         onClick={() => void disconnectEmployeeAsManager(location.employeeId)}
                         disabled={disconnectingEmployeeId === location.employeeId}
-                        loading={disconnectingEmployeeId === location.employeeId}
                       >
-                        Remove From Presence
-                      </AppButton>
-                    </div>
+                        {disconnectingEmployeeId === location.employeeId ? "Removing..." : "Remove From Presence"}
+                      </Button>
+                    </Paper>
                   ))}
-                </div>
+                </Stack>
               ) : (
-                <p className="text-xs text-text-dim">No connected employees.</p>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>No connected employees.</Typography>
               )}
-              {presenceActionStatus ? <p className="text-xs text-text-dim">{presenceActionStatus}</p> : null}
-            </GlassCard>
+              {presenceActionStatus ? <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>{presenceActionStatus}</Typography> : null}
+            </Card>
           ) : null}
 
           {disconnectedLocations.length > 0 ? (
-            <GlassCard className="space-y-3" variant="soft">
-              <p className="font-data text-xs uppercase tracking-[0.2em] text-text-dim">Outdoor / Disconnected</p>
-              <div className="space-y-2">
+            <Card elevation={0} sx={{ p: 3, border: 1, borderColor: 'divider' }}>
+              <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>Outdoor / Disconnected</Typography>
+              <Stack spacing={2} sx={{ mt: 2 }}>
                 {disconnectedLocations.map((location) => (
-                  <div key={location.employeeId} className="rounded-xl border border-outline/60 bg-panel-strong/50 p-3 text-sm">
-                    <p className="font-semibold">{location.employeeId}</p>
-                    <p className="mt-1 text-xs text-text-dim">Last known room: {formatRoomLabel(location.roomId)}</p>
-                    <p className="mt-1 text-xs text-text-dim">Last seen: {new Date(location.ts).toLocaleString()}</p>
-                  </div>
+                  <Paper key={location.employeeId} variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="subtitle2" fontWeight="bold">{location.employeeId}</Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>Last known room: {formatRoomLabel(location.roomId)}</Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>Last seen: {new Date(location.ts).toLocaleString()}</Typography>
+                  </Paper>
                 ))}
-              </div>
-            </GlassCard>
+              </Stack>
+            </Card>
           ) : null}
-        </div>
-        <GlassCard className="space-y-4" variant="soft">
-          <div>
-            <p className="font-data text-xs uppercase tracking-[0.18em] text-text-dim">Operations</p>
-            <h2 className="mt-1 text-xl font-semibold">Device BLE Operations</h2>
-            <p className="mt-1 text-sm text-text-dim">Use the notifications page for targeted and broadcast messages.</p>
-          </div>
+        </Stack>
+        <Card elevation={0} sx={{ p: 3, border: 1, borderColor: 'divider', height: 'fit-content' }}>
+          <Box>
+            <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>Operations</Typography>
+            <Typography variant="h6" fontWeight="bold" sx={{ mt: 1 }}>Device BLE Operations</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>Use the notifications page for targeted and broadcast messages.</Typography>
+          </Box>
 
           {canManageTags ? (
-            <div className="border-t border-outline/70 pt-4">
-              <h3 className="text-base font-semibold">Tag Management</h3>
-              <p className="mt-1 text-xs text-text-dim">Register tags and review BLE provisioning state.</p>
+            <Box sx={{ borderTop: 1, borderColor: 'divider', pt: 3, mt: 3 }}>
+              <Typography variant="subtitle1" fontWeight="bold">Tag Management</Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>Register tags and review BLE provisioning state.</Typography>
 
-              <div className="mt-3 flex gap-2">
-                <AppButton
-                  type="button"
-                  variant="secondary"
-                  size="sm"
+              <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                <Button
+                  variant="outlined"
+                  size="small"
                   onClick={() => void refreshTags()}
-                  loading={isRefreshingTags}
                   disabled={isRefreshingTags}
                 >
                   Refresh
-                </AppButton>
-              </div>
+                </Button>
+              </Box>
 
-              <div className="mt-3 rounded-xl border border-outline/70 bg-panel-strong/60 p-3">
-                <p className="font-data text-xs font-semibold uppercase tracking-[0.12em] text-text-dim">Register New Tag</p>
-                <label className="mt-2 block text-xs text-text-dim">Device ID</label>
-                <AppInput
-                  className="mt-1 py-1.5"
+              <Paper variant="outlined" sx={{ mt: 3, p: 2, bgcolor: 'background.default' }}>
+                <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.5, fontWeight: 'bold' }}>Register New Tag</Typography>
+                
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Device ID"
+                  margin="dense"
                   placeholder="tag-003"
                   value={newTagDeviceId}
                   onChange={(event) => setNewTagDeviceId(event.target.value)}
                 />
 
-                <label className="mt-2 block text-xs text-text-dim">Room ID (optional)</label>
-                <AppInput
-                  className="mt-1 py-1.5"
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Room ID (optional)"
+                  margin="dense"
                   placeholder="room-C2"
                   value={newTagRoomId}
                   onChange={(event) => setNewTagRoomId(event.target.value)}
+                  sx={{ mt: 2 }}
                 />
 
-                <AppButton
-                  type="button"
-                  variant="secondary"
-                  className="mt-3"
-                  size="sm"
+                <Button
+                  variant="outlined"
+                  color="secondary"
+                  size="small"
+                  sx={{ mt: 2 }}
                   onClick={() => void registerTag()}
-                  loading={isAddingTag}
                   disabled={isAddingTag}
                 >
-                  Register Tag
-                </AppButton>
-              </div>
+                  {isAddingTag ? "Registering..." : "Register Tag"}
+                </Button>
+              </Paper>
 
-              <div className="mt-3 max-h-[32rem] space-y-3 overflow-auto pr-1">
+              <Box sx={{ mt: 3, maxHeight: '32rem', overflow: 'auto', pr: 1, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                 {tags.map((tag) => (
-                  <div key={tag.id} className="rounded-xl border border-outline/70 bg-panel-strong/50 p-3">
-                    <p className="font-data text-sm font-semibold">{tag.id}</p>
-                    <p className="mt-1 text-xs text-text-dim">Room: {formatRoomLabel(tag.roomId)}</p>
-                    <p className="mt-1 text-xs text-text-dim">Last BLE provisioning: {tag.bleProvisionedAt ?? "never"}</p>
-                  </div>
+                  <Paper key={tag.id} variant="outlined" sx={{ p: 2 }}>
+                    <Typography variant="body2" fontWeight="bold">{tag.id}</Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>Room: {formatRoomLabel(tag.roomId)}</Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>Last BLE provisioning: {tag.bleProvisionedAt ?? "never"}</Typography>
+                  </Paper>
                 ))}
-                {tags.length === 0 ? <p className="text-xs text-text-dim">No tags registered yet.</p> : null}
-              </div>
+                {tags.length === 0 ? <Typography variant="caption" color="text.secondary">No tags registered yet.</Typography> : null}
+              </Box>
 
-              {tagStatus ? <p className="mt-3 text-xs text-text-dim">{tagStatus}</p> : null}
-            </div>
+              {tagStatus ? <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 2 }}>{tagStatus}</Typography> : null}
+            </Box>
           ) : (
-            <div className="rounded-xl border border-outline/70 bg-panel-strong/45 p-3 text-sm text-text-dim">
+            <Alert severity="info" variant="outlined" sx={{ mt: 3 }}>
               Tag management controls are available to admin and manager roles.
-            </div>
+            </Alert>
           )}
-        </GlassCard>
-      </section>
-    </AppContainer>
+        </Card>
+      </Box>
+      </Stack>
+    </Container>
   );
 }

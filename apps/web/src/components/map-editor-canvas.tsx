@@ -4,6 +4,7 @@ import type { LastKnownLocation } from "@ignara/sharedtypes";
 import type { KonvaEventObject } from "konva/lib/Node";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Circle, Image as KonvaImage, Layer, Rect, Stage, Text, Transformer, Group } from "react-konva";
+import { Paper, Typography } from "@mui/material";
 import { useMapEditorStore } from "../store/map-editor-store";
 
 type MapEditorCanvasProps = {
@@ -338,9 +339,10 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
   );
 
   return (
-    <div
+    <Paper
       ref={wrapperRef}
-      className="overflow-hidden rounded-2xl border border-outline/60 bg-panel/70 p-3 shadow-glass backdrop-blur-sm"
+      elevation={0}
+      sx={{ p: 2, borderRadius: 4, border: 1, borderColor: 'divider', overflow: 'hidden' }}
       onDragOver={(event) => event.preventDefault()}
       onDrop={handleDrop}
     >
@@ -558,9 +560,9 @@ export function MapEditorCanvas({ locations }: MapEditorCanvasProps) {
         </Layer>
       </Stage>
 
-      <p className="mt-2 text-xs text-text-dim">
+      <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
         Tap or click shapes to select, then drag, resize, or rotate with handles. Drag empty map to pan and use mouse wheel to zoom.
-      </p>
-    </div>
+      </Typography>
+    </Paper>
   );
 }

@@ -13,7 +13,8 @@ import type {
 import type { Socket } from "socket.io-client";
 import { createChatSocket, createVoiceSocket } from "../lib/socket";
 import { useToastStore } from "../store/toast-store";
-import { AppButton, AppInput, StatusPill } from "./ui";
+import { alpha } from "@mui/material/styles";
+import { Badge, Box, Button, Card, Chip, Paper, Stack, TextField, Typography } from "@mui/material";
 
 type EmployeeCollabDockProps = {
   orgId: string;
@@ -828,77 +829,131 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
           : "neutral";
 
   return (
-    <div className="pointer-events-none fixed left-2 top-[5.7rem] z-40 flex h-[calc(100vh-6.5rem)] max-h-[48rem] items-start md:left-3">
-      <section
-        className={`pointer-events-auto relative flex h-full w-[min(23rem,calc(100vw-0.75rem))] flex-col rounded-2xl border border-outline/70 bg-panel/92 shadow-lifted backdrop-blur-md transition-transform duration-300 ${
-          isOpen ? "translate-x-0" : "-translate-x-[calc(100%-2.8rem)]"
-        }`}
+    <Box
+      sx={{
+        position: 'fixed',
+        left: { xs: 8, md: 16 },
+        top: { xs: 92, md: 108 },
+        zIndex: 1300,
+        pointerEvents: 'none',
+        height: { xs: 'calc(100vh - 7.5rem)', md: 'calc(100vh - 8rem)' },
+        maxHeight: 760,
+      }}
+    >
+      <Paper
+        elevation={0}
+        sx={(theme) => ({
+          pointerEvents: 'auto',
+          position: 'relative',
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          width: { xs: 'min(22rem, calc(100vw - 1rem))', md: 360 },
+          borderRadius: 4,
+          overflow: 'hidden',
+          transform: isOpen ? 'translateX(0)' : 'translateX(calc(-100% + 3.25rem))',
+          transition: 'transform 0.3s ease',
+          backgroundImage: `linear-gradient(180deg, ${alpha(theme.palette.background.paper, 0.95)}, ${alpha(
+            theme.palette.background.paper,
+            0.9,
+          )})`,
+        })}
       >
-        <button
-          type="button"
-          className="absolute -right-11 top-3 flex h-11 w-11 items-center justify-center rounded-r-xl border border-outline/70 border-l-0 bg-panel/92 text-xs font-semibold text-text shadow-card transition hover:bg-panel-strong"
-          onClick={() => setIsOpen((previous) => !previous)}
-          aria-label={isOpen ? "Hide chat" : "Show chat"}
-        >
-          {isOpen ? "Hide" : "Chat"}
-        </button>
-
-        {unreadCount > 0 && !isOpen ? (
-          <span className="absolute -right-12 top-14 inline-flex min-w-5 items-center justify-center rounded-full border border-success/35 bg-success/20 px-1.5 py-0.5 text-[10px] font-semibold text-success">
-            {unreadCount}
-          </span>
-        ) : null}
-
-        <header className="border-b border-outline/70 px-3 py-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="font-data text-xs uppercase tracking-[0.18em] text-text-dim">Team Channel</p>
-              <h3 className="mt-1 text-base font-semibold">Employee Chat</h3>
-            </div>
-            <StatusPill
-              tone={chatState === "connected" ? "success" : chatState === "connecting" ? "warning" : "error"}
+        <Box sx={{ position: 'absolute', right: -50, top: 16 }}>
+          <Badge color="success" badgeContent={unreadCount} invisible={unreadCount === 0 || isOpen}>
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => setIsOpen((previous) => !previous)}
+              aria-label={isOpen ? "Hide chat" : "Show chat"}
+              sx={{ borderTopRightRadius: 12, borderBottomRightRadius: 12, borderTopLeftRadius: 4, borderBottomLeftRadius: 4 }}
             >
-              {chatState}
-            </StatusPill>
-          </div>
-        </header>
+              {isOpen ? "Hide" : "Chat"}
+            </Button>
+          </Badge>
+        </Box>
 
-        <div ref={chatBodyRef} className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
+        <Box sx={{ px: 2.5, py: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+            <Box>
+              <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.6, fontWeight: 700 }}>
+                Team Channel
+              </Typography>
+              <Typography variant="h6">Employee Chat</Typography>
+            </Box>
+            <Chip
+              size="small"
+              color={chatState === "connected" ? "success" : chatState === "connecting" ? "warning" : "error"}
+              label={chatState}
+            />
+          </Box>
+        </Box>
+
+        <Box
+          ref={chatBodyRef}
+          sx={{
+            flexGrow: 1,
+            overflowY: 'auto',
+            px: 2.5,
+            py: 2,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.5,
+          }}
+        >
           {sortedMessages.length === 0 ? (
-            <p className="rounded-xl border border-outline/65 bg-panel-strong/55 px-3 py-2 text-xs text-text-dim">
-              No messages yet. Say hello to your team.
-            </p>
+            <Card elevation={0} sx={{ p: 2 }}>
+              <Typography variant="caption" color="text.secondary">
+                No messages yet. Say hello to your team.
+              </Typography>
+            </Card>
           ) : null}
 
           {sortedMessages.map((message) => {
             const own = message.senderId === employeeId;
             return (
-              <article
+              <Box
                 key={message.id}
-                className={`rounded-xl border px-3 py-2 ${
-                  own
-                    ? "ml-8 border-accent/40 bg-accent/12 text-text"
-                    : "mr-8 border-outline/70 bg-panel-strong/55 text-text"
-                }`}
+                sx={(theme) => ({
+                  ml: own ? 5 : 0,
+                  mr: own ? 0 : 5,
+                  p: 1.5,
+                  borderRadius: 2.5,
+                  border: '1px solid',
+                  borderColor: own ? alpha(theme.palette.primary.main, 0.4) : theme.palette.divider,
+                  bgcolor: own ? alpha(theme.palette.primary.main, 0.12) : theme.palette.background.default,
+                })}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-xs font-semibold">{own ? "You" : employeeHandle(message.senderId)}</p>
-                  <p className="text-[10px] text-text-dim">{formatTime(message.ts)}</p>
-                </div>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-relaxed">{message.text}</p>
-                {message.roomId ? <p className="mt-1 text-[10px] text-text-dim">Room: {message.roomId}</p> : null}
-              </article>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                  <Typography variant="caption" fontWeight={600} noWrap>
+                    {own ? "You" : employeeHandle(message.senderId)}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {formatTime(message.ts)}
+                  </Typography>
+                </Box>
+                <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>
+                  {message.text}
+                </Typography>
+                {message.roomId ? (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    Room: {message.roomId}
+                  </Typography>
+                ) : null}
+              </Box>
             );
           })}
-        </div>
+        </Box>
 
-        <footer className="space-y-3 border-t border-outline/70 px-3 py-3">
-          <div className="flex items-center gap-2">
-            <AppInput
+        <Box sx={{ px: 2.5, py: 2, borderTop: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <TextField
+              fullWidth
+              size="small"
               value={chatInput}
-              onChange={(event) => setChatInput(event.target.value)}
               placeholder="Type a message"
-              maxLength={500}
+              inputProps={{ maxLength: 500 }}
+              onChange={(event) => setChatInput(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   event.preventDefault();
@@ -906,48 +961,58 @@ export function EmployeeCollabDock({ orgId, employeeId, activeRoomId, locationsB
                 }
               }}
             />
-            <AppButton type="button" size="sm" onClick={sendChatMessage} disabled={chatInput.trim().length === 0}>
+            <Button variant="contained" size="small" onClick={sendChatMessage} disabled={chatInput.trim().length === 0}>
               Send
-            </AppButton>
-          </div>
+            </Button>
+          </Stack>
 
-          <div className="rounded-xl border border-outline/70 bg-panel-strong/50 p-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="font-data text-xs uppercase tracking-[0.15em] text-text-dim">Proximity Voice</p>
-                <p className="mt-1 text-sm text-text-dim">Room: {activeRoomId ?? "Not in any room"}</p>
-              </div>
-              <StatusPill tone={voiceStatusTone}>{voiceState}</StatusPill>
-            </div>
+          <Card elevation={0} sx={{ p: 2 }}>
+            <Stack spacing={1.5}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+                <Box>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1.4, fontWeight: 700 }}>
+                    Proximity Voice
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Room: {activeRoomId ?? "Not in any room"}
+                  </Typography>
+                </Box>
+                <Chip size="small" color={voiceStatusTone} label={voiceState} />
+              </Box>
 
-            <div className="mt-3 flex flex-wrap gap-2">
-              <AppButton
-                type="button"
-                size="sm"
-                variant={voiceEnabled ? "secondary" : "primary"}
-                onClick={() => {
-                  setVoiceError(null);
-                  setVoiceEnabled((previous) => !previous);
-                }}
-              >
-                {voiceEnabled ? "Disable Voice" : "Enable Voice"}
-              </AppButton>
-              <AppButton
-                type="button"
-                size="sm"
-                variant="ghost"
-                disabled={!voiceEnabled}
-                onClick={() => setVoiceMuted((previous) => !previous)}
-              >
-                {voiceMuted ? "Unmute Mic" : "Mute Mic"}
-              </AppButton>
-            </div>
+              <Stack direction="row" spacing={1} flexWrap="wrap">
+                <Button
+                  variant={voiceEnabled ? "outlined" : "contained"}
+                  size="small"
+                  onClick={() => {
+                    setVoiceError(null);
+                    setVoiceEnabled((previous) => !previous);
+                  }}
+                >
+                  {voiceEnabled ? "Disable Voice" : "Enable Voice"}
+                </Button>
+                <Button
+                  variant="text"
+                  size="small"
+                  disabled={!voiceEnabled}
+                  onClick={() => setVoiceMuted((previous) => !previous)}
+                >
+                  {voiceMuted ? "Unmute Mic" : "Mute Mic"}
+                </Button>
+              </Stack>
 
-            <p className="mt-2 text-xs text-text-dim">Peers in room: {voicePeers.length}</p>
-            {voiceError ? <p className="mt-2 text-xs text-error">{voiceError}</p> : null}
-          </div>
-        </footer>
-      </section>
-    </div>
+              <Typography variant="caption" color="text.secondary">
+                Peers in room: {voicePeers.length}
+              </Typography>
+              {voiceError ? (
+                <Typography variant="caption" color="error.main">
+                  {voiceError}
+                </Typography>
+              ) : null}
+            </Stack>
+          </Card>
+        </Box>
+      </Paper>
+    </Box>
   );
 }
