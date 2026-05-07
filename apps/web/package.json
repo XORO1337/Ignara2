@@ -1,0 +1,33 @@
+{
+  "name": "@ignara/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "node ../../scripts/next-with-port.cjs dev",
+    "build": "next build",
+    "start": "node ../../scripts/next-with-port.cjs start",
+    "lint": "next lint",
+    "test": "echo 'No tests configured for web'"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.13.0",
+    "@emotion/styled": "^11.13.0",
+    "@ignara/sharedtypes": "workspace:*",
+    "@mui/icons-material": "^6.1.0",
+    "@mui/material": "^6.1.0",
+    "@mui/material-nextjs": "^6.1.0",
+    "konva": "^9.3.16",
+    "next": "14.2.15",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-konva": "^18.2.10",
+    "socket.io-client": "^4.8.0",
+    "zustand": "^5.0.0-rc.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.6.3"
+  }
+}

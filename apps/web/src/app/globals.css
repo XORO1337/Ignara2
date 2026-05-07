@@ -1,0 +1,25 @@
+@layer mui {
+  html,
+  body {
+    padding: 0;
+    margin: 0;
+    font-family: var(--font-space-grotesk), "Segoe UI", sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    min-height: 100%;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .font-data {
+    font-family: var(--font-ibm-plex-mono), "Consolas", monospace;
+  }
+}

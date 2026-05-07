@@ -1,0 +1,47 @@
+{
+  "name": "@ignara/api",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "ts-node-dev --respawn --transpile-only src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "lint": "echo 'No lints configured for api'",
+    "test": "echo 'No tests configured for api'",
+    "migration:run": "typeorm-ts-node-commonjs -d src/typeorm.datasource.ts migration:run",
+    "migration:generate": "typeorm-ts-node-commonjs -d src/typeorm.datasource.ts migration:generate src/migrations/init",
+    "seed": "ts-node src/seed.ts"
+  },
+  "dependencies": {
+    "@ignara/sharedtypes": "workspace:*",
+    "@nestjs/common": "^10.4.7",
+    "@nestjs/config": "^3.2.3",
+    "@nestjs/core": "^10.4.7",
+    "@nestjs/jwt": "^10.2.0",
+    "@nestjs/passport": "^10.0.3",
+    "@nestjs/platform-express": "^10.4.7",
+    "@nestjs/platform-socket.io": "^10.4.7",
+    "@nestjs/typeorm": "^10.0.2",
+    "@casl/ability": "^6.7.2",
+    "cookie-parser": "^1.4.7",
+    "express": "^4.21.1",
+    "ioredis": "^5.4.1",
+    "mqtt": "^5.10.1",
+    "passport": "^0.7.0",
+    "passport-jwt": "^4.0.1",
+    "pg": "^8.13.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "socket.io": "^4.8.0",
+    "typeorm": "^0.3.20"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.7",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.7.4",
+    "@types/passport-jwt": "^4.0.1",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.6.3"
+  }
+}
