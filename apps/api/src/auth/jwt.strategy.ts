@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { PassportStrategy } from "@nestjs/passport";
 import { ExtractJwt, Strategy } from "passport-jwt";
+import type { UserRestrictions, UserStatus } from "@ignara/sharedtypes";
 import { isDevAllowlistedEmail } from "../common/dev-user-allowlist";
 
 type JwtPayload = {
@@ -9,6 +10,8 @@ type JwtPayload = {
   role: string;
   gender?: "male" | "female" | "other";
   orgId: string;
+  status?: UserStatus;
+  restrictions?: UserRestrictions;
   isDevAllowlisted?: boolean;
 };
 
@@ -28,6 +31,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     return {
       ...payload,
       gender: payload.gender ?? "other",
+      status: payload.status ?? "active",
+      restrictions: payload.restrictions ?? {},
       isDevAllowlisted: isDevAllowlistedEmail(payload.email),
     };
   }

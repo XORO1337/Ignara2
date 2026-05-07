@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import type { Socket } from "socket.io";
 import { validateCorsOrigin } from "../common/cors-origin";
 import { LocationsService } from "../locations/locations.service";
+import { UsersService } from "../users/users.service";
 import { ChatService } from "./chat.service";
 
 type ChatContext = {
@@ -21,6 +22,7 @@ export class ChatGateway implements OnModuleDestroy {
   constructor(
     private readonly chatService: ChatService,
     private readonly locationsService: LocationsService,
+    private readonly usersService: UsersService,
   ) {}
 
   initialize(httpServer: unknown) {
@@ -86,6 +88,16 @@ export class ChatGateway implements OnModuleDestroy {
     const orgId = payload.orgId.trim();
     const employeeId = payload.employeeId.trim();
     if (!orgId || !employeeId) {
+      return;
+    }
+
+    // Enforce chat restriction
+    const user = await this.usersService.findByEmail(employeeId);
+    if (user && (user.status === "banned" || user.restrictions?.chat)) {
+      socket.emit("chat:error", user.status === "banned"
+        ? "Your account has been suspended. Chat access is disabled."
+        : "Chat access has been restricted by your administrator.");
+      socket.emit("chat:history", []);
       return;
     }
 

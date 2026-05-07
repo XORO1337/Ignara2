@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { Role, UserGender } from "@ignara/sharedtypes";
+import type { Role, UserGender, UserStatus, UserRestrictions } from "@ignara/sharedtypes";
 import { apiRequest } from "../lib/api";
 
 export type SessionUser = {
@@ -10,6 +10,8 @@ export type SessionUser = {
   role: Role;
   gender: UserGender;
   orgId: string;
+  status?: UserStatus;
+  restrictions?: UserRestrictions;
   isDevAllowlisted?: boolean;
 };
 

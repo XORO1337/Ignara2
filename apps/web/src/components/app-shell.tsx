@@ -46,6 +46,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (canAccessMapEditor) {
     links.splice(3, 0, { href: "/map-editor", label: "Map Editor" });
   }
+  if (user?.role === "admin") {
+    links.push({ href: "/admin/users", label: "Manage Users" });
+  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', color: 'text.primary' }}>

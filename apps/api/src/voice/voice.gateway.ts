@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import type { Socket } from "socket.io";
 import { validateCorsOrigin } from "../common/cors-origin";
 import { LocationsService } from "../locations/locations.service";
+import { UsersService } from "../users/users.service";
 
 type VoiceParticipant = {
   orgId: string;
@@ -19,7 +20,10 @@ export class VoiceGateway implements OnModuleDestroy {
   private readonly participantBySocketId = new Map<string, VoiceParticipant>();
   private readonly roomMembers = new Map<string, Map<string, string>>();
 
-  constructor(private readonly locationsService: LocationsService) {}
+  constructor(
+    private readonly locationsService: LocationsService,
+    private readonly usersService: UsersService,
+  ) {}
 
   initialize(httpServer: unknown) {
     if (this.server) {
@@ -85,6 +89,18 @@ export class VoiceGateway implements OnModuleDestroy {
       this.emitVoiceError(socket, {
         reason: "invalid-payload",
         message: "Voice join denied: orgId and employeeId are required.",
+      });
+      return;
+    }
+
+    // Enforce voice restriction
+    const user = await this.usersService.findByEmail(employeeId);
+    if (user && (user.status === "banned" || user.restrictions?.voice)) {
+      this.emitVoiceError(socket, {
+        reason: "invalid-payload",
+        message: user.status === "banned"
+          ? "Your account has been suspended. Voice access is disabled."
+          : "Voice access has been restricted by your administrator.",
       });
       return;
     }

@@ -27,6 +27,8 @@ async function seed() {
       gender: "other",
       orgId: org.id,
       password: hashPassword("admin123"),
+      status: "active",
+      restrictions: {},
     },
     {
       email: "manager@ignara.local",
@@ -34,6 +36,8 @@ async function seed() {
       gender: "male",
       orgId: org.id,
       password: hashPassword("manager123"),
+      status: "active",
+      restrictions: {},
     },
     {
       email: "employee@ignara.local",
@@ -42,6 +46,8 @@ async function seed() {
       orgId: org.id,
       password: hashPassword("employee123"),
       tagDeviceId: "emp-001",
+      status: "active",
+      restrictions: {},
     },
     {
       email: "employee2@ignara.local",
@@ -50,6 +56,8 @@ async function seed() {
       orgId: org.id,
       password: hashPassword("employee123"),
       tagDeviceId: "emp-002",
+      status: "active",
+      restrictions: {},
     },
   ];
 

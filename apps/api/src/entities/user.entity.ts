@@ -1,4 +1,4 @@
-import type { Role, UserGender } from "@ignara/sharedtypes";
+import type { Role, UserGender, UserStatus, UserRestrictions } from "@ignara/sharedtypes";
 import { Column, Entity, JoinColumn, ManyToOne, PrimaryColumn } from "typeorm";
 import { OrganizationEntity } from "./organization.entity";
 
@@ -28,4 +28,10 @@ export class UserEntity {
 
   @Column({ type: "varchar", length: 64, nullable: true, name: "tag_device_id" })
   tagDeviceId?: string | null;
+
+  @Column({ type: "varchar", length: 16, default: "active" })
+  status!: UserStatus;
+
+  @Column({ type: "jsonb", default: {} })
+  restrictions!: UserRestrictions;
 }

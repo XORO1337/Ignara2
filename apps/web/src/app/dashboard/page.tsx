@@ -27,6 +27,8 @@ type OrgUser = {
   role: "admin" | "manager" | "employee";
   gender?: UserGender;
   tagDeviceId?: string | null;
+  status?: string;
+  restrictions?: Record<string, boolean>;
 };
 
 type DisconnectPing = {

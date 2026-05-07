@@ -28,27 +28,6 @@ export class AuthController {
     return { user: result.user };
   }
 
-  @Post("signup")
-  async signup(
-    @Body() body: { email: string; password: string; role?: "admin" | "manager" | "employee" },
-    @Res({ passthrough: true }) response: Response,
-  ) {
-    if (!body?.email || !body?.password) {
-      throw new BadRequestException("Email and password are required");
-    }
-
-    const result = await this.authService.signup(body.email, body.password, body.role);
-
-    response.cookie("ignara_access", result.accessToken, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: false,
-      maxAge: 15 * 60 * 1000,
-    });
-
-    return { user: result.user };
-  }
-
   @Post("logout")
   logout(@Res({ passthrough: true }) response: Response) {
     response.clearCookie("ignara_access");

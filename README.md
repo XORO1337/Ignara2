@@ -91,6 +91,32 @@ Default demo users:
 - `manager@ignara.local` / `manager123`
 - `employee@ignara.local` / `employee123`
 
+## User Management
+
+Self-registration (signup) is disabled. All user accounts are created and managed by administrators through the **Manage Users** page (`/admin/users`) or via the API:
+
+- `GET /users` — List all org users
+- `POST /users` — Create a new user (admin only)
+- `PATCH /users/:id` — Update user credentials, role, status, or restrictions (admin only)
+- `DELETE /users/:id` — Delete a user (admin only)
+
+### Account Status
+
+| Status | Effect |
+|--------|--------|
+| `active` | Full access to all features |
+| `banned` | Cannot log in; existing sessions are blocked |
+| `restricted` | Can log in, but specific features may be blocked |
+
+### Feature Restrictions
+
+Admins can toggle individual feature access per user:
+
+- **Chat** — Block text chat access
+- **Voice** — Block voice call access
+- **Location** — Block location tracking
+- **Notifications** — Block notification access
+
 ## MQTT Test Commands (Enter/Exit)
 
 The API subscribes to `ignara/location/+` and expects JSON payloads shaped like `ScannerLocationEvent`.

@@ -1,7 +1,6 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { alpha } from "@mui/material/styles";
 import { apiRequest } from "../../lib/api";
@@ -75,16 +74,7 @@ export default function LoginPage() {
           </Typography>
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" color="text.secondary">
-              Don&apos;t have an account?{" "}
-              <Typography
-                component={Link}
-                href="/signup"
-                variant="body2"
-                color="primary"
-                sx={{ fontWeight: 700, textDecoration: 'none', '&:hover': { textDecoration: 'underline' } }}
-              >
-                Create one now
-              </Typography>
+              Accounts are managed by your organization administrator.
             </Typography>
           </Box>
         </Box>

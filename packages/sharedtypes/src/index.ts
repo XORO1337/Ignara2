@@ -1,5 +1,13 @@
 export type Role = "admin" | "manager" | "employee";
 export type UserGender = "male" | "female" | "other";
+export type UserStatus = "active" | "banned" | "restricted";
+
+export interface UserRestrictions {
+  chat?: boolean;
+  voice?: boolean;
+  location?: boolean;
+  notifications?: boolean;
+}
 
 export interface ScannerLocationEvent {
   employeeId: string;
